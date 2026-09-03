@@ -11,9 +11,10 @@ def archive_current_run(db, project, archived_state: str | None = None) -> None:
     """Add a summary of the current run to project.runs and increment
     current_run, so the next analyze computes into a new folder.
 
-    Also clears the review fields and the cluster labels, which belong to the
-    clustering of the run being archived. Does not commit; the caller owns the
-    transaction.
+    Also clears the per-run review fields off the project and stamps the
+    outgoing run's row. Cluster labels are KEPT — they belong to the archived
+    run and are what let it be finished later. Does not commit; the caller owns
+    the transaction.
     """
     from app.db import models
 
@@ -47,12 +48,30 @@ def archive_current_run(db, project, archived_state: str | None = None) -> None:
             "ortho_stem": pinned_stem or (used.stem if used else None),
         }
     )
+    # Stamp the outgoing run's row BEFORE current_run moves, or the mirror
+    # would write this run's outcome onto the next run's row.
+    from app.services.run_registry import mirror
+    outgoing = mirror(db, project, number=project.current_run or 1, commit=False)
+    if outgoing is not None:
+        outgoing.state = archived_state or project.state
+        if outgoing.ortho_id is None:
+            outgoing.ortho_id = pinned_id or (used.id if used else None)
+        db.add(outgoing)
+
     project.runs = history
     project.current_run = (project.current_run or 1) + 1
     project.run_name = None
     project.recommended_k = None
     project.available_k = None
-    db.query(models.ClusterLabel).filter_by(project_id=project.id).delete()
+
+    # The cluster labels are NOT deleted any more. This used to be
+    #
+    #     db.query(models.ClusterLabel).filter_by(project_id=project.id).delete()
+    #
+    # which threw away the user's species judgement — the most expensive thing
+    # they produce — every time a new run opened. It is the single reason an
+    # earlier run could never be picked up and finished later. Labels now carry
+    # ``run_id`` and stay with the run they describe.
 
 
 def _last_error(project) -> dict | None:

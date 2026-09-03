@@ -23,6 +23,10 @@ class Config:
     K_LIST = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20]
     COPY_TO_CLUSTER_FOLDERS = True
 
+    # How many crowns per cluster get a thumbnail rendered for the review
+    # screen. These are the ones nearest the cluster centre.
+    THUMBS_PER_CLUSTER = 5
+
     # Step 2: species assignment.
     CHOSEN_K = 4
     STEP2_OUTPUT = "output/step2_output"

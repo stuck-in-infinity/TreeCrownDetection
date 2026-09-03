@@ -10,6 +10,7 @@ import re
 import types
 
 from app.core.models_registry import default_backbone, resolve_model_path
+from app.core.settings import settings
 from app.core.storage import project_paths
 
 # KML colours in AABBGGRR order, copied from the pipeline's Config.
@@ -67,6 +68,7 @@ def build_config(project) -> types.SimpleNamespace:
     cfg.PCA_COMPONENTS = params.get("pca_components", 50)
     cfg.K_LIST = params.get("k_list", [2, 4, 6, 8, 10])
     cfg.COPY_TO_CLUSTER_FOLDERS = True
+    cfg.THUMBS_PER_CLUSTER = settings.thumbs_per_cluster
 
     # Steps 2 and 4: species labels and export.
     cfg.CHOSEN_K = params.get("chosen_k", 2)

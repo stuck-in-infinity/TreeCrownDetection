@@ -106,6 +106,21 @@ class Settings(BaseSettings):
     # in development, but the heavy ML dependencies must still be importable.
     celery_eager: bool = False
 
+    # How many crowns per cluster get a thumbnail rendered during analysis, for
+    # the review screen to show. Nearest the cluster centre first. Set to 0 to
+    # render none and let the API convert every crown on demand instead.
+    thumbs_per_cluster: int = 5
+
+    # ── start-up recovery ──────────────────────────────────────────────
+    # On boot, release runs that a restart killed: a project left in ANALYZING
+    # or FINALIZING with no live worker is marked FAILED so it can be re-run.
+    # Only runs whose work was in THIS process are touched; a run handed to
+    # Airflow is left alone because the DAG may still be going.
+    #
+    # Turn off only if you are debugging a stuck project and want its state
+    # preserved across a restart.
+    startup_recovery_enabled: bool = True
+
     # Retention and cleanup. The consent-aware retention pass runs from
     # scripts/run_retention.py under system cron, not from the Celery beat task,
     # so leave cleanup_enabled False — the old beat job deletes without checking

@@ -33,6 +33,8 @@ from torchvision import transforms
 from PIL import Image
 import timm
 import simplekml
+
+import crown_thumbs
 import matplotlib
 matplotlib.use('Agg')          # no display and no GUI loop; jobs run off-thread
 import matplotlib.pyplot as plt
@@ -301,6 +303,48 @@ def step1_extract_features(config, dir_crowns, model=None):
     return X, names_df, dir_features
 
 
+def _write_cluster_thumbs(config, cl_df, dir_crowns, k_dir, k):
+    """Render the most typical crowns of each cluster to ``k<k>/thumbs/``.
+
+    "Most typical" means nearest the cluster centre, which is what
+    ``dist_to_centroid`` records. Ordering by filename instead would show
+    whichever crowns happened to be detected first — that is tile order, and it
+    says nothing about what the cluster contains.
+
+    How many per cluster comes from ``THUMBS_PER_CLUSTER`` (default 5). At five
+    crowns and a 200px edge these are roughly 20 KB each, so even a long k list
+    adds a couple of megabytes to a run — nothing next to the crown GeoTIFFs
+    themselves.
+
+    A crown that will not render is skipped with a warning rather than failing
+    the run: the API renders anything missing on demand, so the worst case is a
+    slower first page, not a lost analysis.
+    """
+    per_cluster = int(getattr(config, 'THUMBS_PER_CLUSTER', 5) or 0)
+    if per_cluster <= 0:
+        return
+
+    thumbs_dir = os.path.join(k_dir, 'thumbs')
+    made = failed = 0
+    for ci in range(k):
+        rows = cl_df[cl_df['cluster'] == ci]
+        if 'dist_to_centroid' in rows.columns:
+            rows = rows.nsmallest(per_cluster, 'dist_to_centroid')
+        else:
+            rows = rows.head(per_cluster)
+        for name in rows['image_name']:
+            src = os.path.join(dir_crowns, name)
+            dst = os.path.join(thumbs_dir, os.path.splitext(name)[0] + '.png')
+            if crown_thumbs.write_thumbnail(src, dst):
+                made += 1
+            else:
+                failed += 1
+    note = f'  k={k}: {made} cluster thumbnails'
+    if failed:
+        note += f'  ({failed} could not be rendered — the API will retry these on demand)'
+    print(note)
+
+
 def step1_cluster(config, X, names_df, dir_crowns):
     """Run K-means at each k in the configured list."""
     print('\n' + '='*70)
@@ -328,10 +372,17 @@ def step1_cluster(config, X, names_df, dir_crowns):
         db_vals.append(db)
         print(f'inertia={km.inertia_:.0f}  silhouette={sil:.4f}  davies_bouldin={db:.4f}')
         
-        # Record which cluster each crown fell into.
+        # Record which cluster each crown fell into, and how far it sits from
+        # that cluster's centre. KMeans already computed the distances to fit
+        # the labels, so taking them costs one more call and nothing else.
+        # The distance is what "show me five typical crowns of this cluster"
+        # needs: without it the only orderings available are alphabetical or
+        # arbitrary, and neither says anything about the cluster.
         cl_df = names_df.copy()
         cl_df['cluster'] = cl
         cl_df['cluster_label'] = cl_df['cluster'].apply(lambda x: f'cluster_{x}')
+        dist = km.transform(X)                       # (n_crowns, k)
+        cl_df['dist_to_centroid'] = dist[np.arange(len(cl)), cl]
         cl_df.to_csv(os.path.join(dir_cluster, f'k{k}_assignments.csv'), index=False)
         
         # One folder per cluster.
@@ -348,6 +399,13 @@ def step1_cluster(config, X, names_df, dir_crowns):
                 if os.path.exists(src) and not os.path.exists(dst):
                     shutil.copy2(src, dst)
         
+        # Small PNGs of the most typical crowns in each cluster, so the review
+        # screen has something to show without converting GeoTIFFs on the fly.
+        # Rendered for every k, not just the recommended one: the user compares
+        # k values, and rendering the others on demand is the slow path this is
+        # meant to avoid.
+        _write_cluster_thumbs(config, cl_df, dir_crowns, k_dir, k)
+
         # An empty species map for the user to fill in.
         blank_map = pd.DataFrame({
             'cluster': list(range(k)),

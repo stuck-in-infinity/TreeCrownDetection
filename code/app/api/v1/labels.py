@@ -9,51 +9,70 @@ import io
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
-from app.core.logging import ERROR_CODES
+from app.core.logging import ERROR_CODES, get_logger
 from app.api.deps import get_project
 from app.db import models
 from app.db.session import get_db
 from app.services.pipeline_adapter import normalize_species, write_species_map_csv
+from app.services import run_registry
 from app.services.state import transition_if
 
 router = APIRouter()
+log = get_logger("app.api")
 
 _LABEL_STATES = {"AWAITING_LABELS", "LABELS_SUBMITTED", "COMPLETED"}
 _REQUIRED_COLS = {"cluster", "species"}
 
 
+@router.post("/projects/{project_id}/runs/{run}/labels")
+@router.post("/project/runs/{run}/labels")
 @router.post("/projects/{project_id}/labels")
 @router.post("/project/labels")
 def submit_labels(
     project=Depends(get_project),
+    run: int | None = None,
     chosen_k: int = Form(...),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):
-    """Upload the filled-in ``k{chosen_k}_cluster_species_map.csv``.
+    """Upload the filled ``k{chosen_k}_cluster_species_map.csv``.
 
-    The CSV needs at least the ``cluster`` and ``species`` columns;
-    ``cluster_folder`` and ``notes`` are accepted but not required. There should
-    be one row per cluster, numbered 0 to chosen_k - 1. A blank species is
-    stored as ``unlabelled``, and species names are normalised here, so
-    'Non Acacia', 'non-acacia' and 'non_acacia' all end up as ``non_acacia``.
+    The CSV must have at least the columns ``cluster`` and ``species``;
+    ``cluster_folder`` and ``notes`` are accepted but optional. One row per
+    cluster (0 to chosen_k − 1). Empty species values are stored as
+    ``unlabelled``; whitespace, case, and hyphens in species names are
+    normalised server-side so 'Non Acacia', 'non-acacia', and 'non_acacia'
+    all become ``non_acacia``.
     """
-    # Each rejection below says what was wrong and what to do about it. This is
-    # the one step nobody can skip, and it comes after a run that may have taken
-    # half an hour, so a bare "400 Bad Request" would cost the user that run.
-    if project.state not in _LABEL_STATES:
+    # Every rejection below names what was wrong AND what to do about it. This
+    # is the one step in the pipeline a person cannot skip, and it is reached
+    # after a run that may have taken half an hour — a bare "400 Bad Request"
+    # here costs the user that run's worth of patience.
+    # Which run is being labelled. Omitted means the active one, which is what
+    # every existing caller means. Named explicitly, it may be any run of this
+    # project that has reached clustering — including one that finished weeks
+    # ago while a different run is computing right now.
+    target_run = run if run is not None else (project.current_run or 1)
+    run_row = run_registry.ensure_run(db, project, target_run)
+    db.commit()
+    is_active = target_run == (project.current_run or 1)
+
+    if run_row.state not in _LABEL_STATES:
+        log.warning("409 INVALID_STATE project=%s run=%s state=%s",
+                    project.id, target_run, run_row.state)
         raise HTTPException(409, {
             "code": ERROR_CODES["INVALID_STATE"],
             "message": (
-                f"Labels can only be submitted once a run is waiting for them. "
-                f"This project is currently {project.state}."
+                f"Labels can only be submitted once a run has finished "
+                f"clustering. Run {target_run} is currently {run_row.state}."
             ),
             "project_id": project.id,
-            "hint": ("wait for the analysis to reach AWAITING_LABELS, or start a "
-                     "new run if the last one failed"),
-            "details": {"state": project.state, "accepted_states": sorted(_LABEL_STATES)},
+            "hint": ("wait for that run to reach AWAITING_LABELS, or pick a run "
+                     "that already has results"),
+            "details": {"run": target_run, "state": run_row.state,
+                        "accepted_states": sorted(_LABEL_STATES)},
         })
-    if project.available_k and chosen_k not in project.available_k:
+    if run_row.available_k and chosen_k not in run_row.available_k:
         raise HTTPException(400, {
             "code": ERROR_CODES["INVALID_PARAM"],
             "message": (
@@ -77,7 +96,7 @@ def submit_labels(
                      "then upload that file"),
         })
 
-    # Read the upload. utf-8-sig removes the byte-order mark Excel may add.
+    # Parse the upload. utf-8-sig strips a BOM if Excel added one.
     try:
         raw = file.file.read().decode("utf-8-sig")
     except UnicodeDecodeError as exc:
@@ -120,7 +139,7 @@ def submit_labels(
         except (TypeError, ValueError):
             continue
         if cid < 0 or cid >= chosen_k:
-            continue  # ignore rows whose cluster number is outside chosen_k
+            continue  # silently ignore rows outside the chosen_k range
         mapping[cid] = {
             "species": normalize_species(row.get("species", "")),
             "notes": (row.get("notes") or "").strip(),
@@ -140,16 +159,17 @@ def submit_labels(
             "details": {"chosen_k": chosen_k, "valid_cluster_range": [0, chosen_k - 1]},
         })
 
-    # Note which run these labels belong to before writing anything. An analyze
-    # trigger arriving now would archive the current run and move the counter on.
-    run = project.current_run or 1
-
-    # Replace any mapping already stored for this project.
-    db.query(models.ClusterLabel).filter_by(project_id=project.id).delete()
+    # Replace any previous mapping FOR THIS RUN only. Scoping by run is what
+    # lets run 2 keep its labels while run 4 is being labelled — the old
+    # project-wide delete is exactly what made past runs unfinishable.
+    db.query(models.ClusterLabel).filter_by(
+        project_id=project.id, run_id=run_row.id
+    ).delete()
     for cid, m in mapping.items():
         db.add(
             models.ClusterLabel(
                 project_id=project.id,
+                run_id=run_row.id,
                 chosen_k=chosen_k,
                 cluster_id=cid,
                 species=m["species"],
@@ -157,46 +177,73 @@ def submit_labels(
             )
         )
 
-    # Save chosen_k into params. It has to be a new dict, otherwise SQLAlchemy
-    # does not notice the change.
-    params = dict(project.params or {})
-    params["chosen_k"] = chosen_k
-    project.params = params
-    db.add(project)
+    # chosen_k belongs to the run. It is also written onto the project when the
+    # run IS the active one, because finalize and the pipeline still read it
+    # from there.
+    run_params = dict(run_row.params or {})
+    run_params["chosen_k"] = chosen_k
+    run_row.params = run_params
+    run_row.chosen_k = chosen_k
+    db.add(run_row)
+    if is_active:
+        params = dict(project.params or {})
+        params["chosen_k"] = chosen_k
+        project.params = params
+        db.add(project)
     db.commit()
 
-    # Write the CSV that the pipeline's step 2 reads.
-    write_species_map_csv(project, chosen_k, mapping, run=run)
+    # write the canonical CSV the pipeline's step2 reads, into THAT run's folder
+    write_species_map_csv(project, chosen_k, mapping, run=target_run)
 
-    # Move the state with a conditional update. The state check at the top of
-    # this handler gives a good error message but is not a lock: parsing, the
-    # label rewrite and the CSV write all happen after it, and a re-analyze
-    # trigger can arrive in that gap. Assigning the state directly would write
-    # LABELS_SUBMITTED over ANALYZING, which would let a finalize start against
-    # a run whose Step 1 output is being rebuilt.
-    if not transition_if(db, project, _LABEL_STATES, "LABELS_SUBMITTED"):
-        # Another request got there first. Remove the rows just written, so the
-        # run that is starting does not inherit labels from the clustering it is
-        # about to replace.
-        db.query(models.ClusterLabel).filter_by(project_id=project.id).delete()
+    # Claim the state atomically. The check at the top of this handler is a
+    # fast-fail for a good error message, not a guard: parsing, the label
+    # rewrite and the CSV write all sit between it and here, and a re-analyze
+    # trigger can win that window. A plain assignment would then stamp
+    # LABELS_SUBMITTED over ANALYZING, dropping the busy guard and letting a
+    # finalize start against a run whose step-1 outputs are being rewritten.
+    if is_active:
+        # The active run shares its state with the project, so the claim has to
+        # be atomic: parsing, the label rewrite and the CSV write all sit
+        # between the check at the top and here, and a re-analyze trigger can
+        # win that window. A plain assignment would stamp LABELS_SUBMITTED over
+        # ANALYZING, dropping the busy guard and letting a finalize start
+        # against a run whose step-1 outputs are being rewritten.
+        if not transition_if(db, project, _LABEL_STATES, "LABELS_SUBMITTED"):
+            # Lost the race — drop the rows we just wrote so a freshly-opened
+            # run doesn't inherit labels from the clustering it is about to
+            # replace. Scoped to this run; other runs' labels are untouched.
+            db.query(models.ClusterLabel).filter_by(
+                project_id=project.id, run_id=run_row.id
+            ).delete()
+            db.commit()
+            db.refresh(project)
+            raise HTTPException(409, {
+                "code": "CONFLICT_BUSY",
+                "message": (
+                    f"Project moved to {project.state} while the labels were "
+                    "being saved; the labels were discarded"
+                ),
+                "project_id": project.id,
+                "hint": "wait for the current run to finish, then resubmit",
+            })
+    else:
+        # An older run. Its state is its own — the project may well be ANALYZING
+        # a different run right now, and saying so here would drop that run's
+        # busy guard. Nothing shared is touched: the labels and the CSV both
+        # live under work/run_<target>/.
+        run_row.state = "LABELS_SUBMITTED"
+        db.add(run_row)
         db.commit()
-        db.refresh(project)
-        raise HTTPException(409, {
-            "code": "CONFLICT_BUSY",
-            "message": (
-                f"Project moved to {project.state} while the labels were being "
-                "saved; the labels were discarded"
-            ),
-            "project_id": project.id,
-            "hint": "wait for the current run to finish, then resubmit",
-        })
 
     counts: dict[str, int] = {}
     for v in mapping.values():
         counts[v["species"]] = counts.get(v["species"], 0) + 1
     return {
         "project_id": project.id,
-        "state": project.state,
+        "run": target_run,
+        "run_id": run_row.id,
+        "state": run_row.state,
+        "project_state": project.state,
         "chosen_k": chosen_k,
         "species_counts_preview": counts,
     }
