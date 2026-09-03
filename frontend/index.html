@@ -3689,7 +3689,10 @@ async function showKView(k){
 
   const q = "?run=" + encodeURIComponent(run);
   view.innerHTML = '<div class="review-sub">k = ' + k + '</div>'
-    + reviewImg("/api/v1/project/clustering/" + k + "/tsne.png" + q,
+    // apiBase(), not a bare path: the UI and the API are served from different
+    // origins in the default deployment (:8200 and :8123), so a relative URL
+    // would ask nginx for an image it does not have.
+    + reviewImg(apiBase() + "/api/v1/project/clustering/" + k + "/tsne.png" + q,
                 "t-SNE plot for k=" + k, "plot")
     + '<div id="kClusters"><p class="muted">loading crowns…</p></div>';
 
