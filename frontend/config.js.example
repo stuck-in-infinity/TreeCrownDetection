@@ -1,0 +1,18 @@
+/*
+ * Frontend runtime config — copy to `config.js` and fill in.
+ *
+ * The Google client id is a PUBLIC value (client-side GIS token flow), safe to
+ * ship to the browser. It is NOT a secret and does NOT belong in the backend
+ * .env. Create an OAuth Client ID (type: Web application) in Google Cloud
+ * Console, add your frontend origin under "Authorized JavaScript origins"
+ * (e.g. http://localhost:8200, https://your-site.com), then paste the id below.
+ *
+ * `config.js` is git-ignored so each deployment sets its own values; this
+ * `.example` is the committed template.
+ */
+window.GOOGLE_CLIENT_ID = "PASTE_YOUR_CLIENT_ID.apps.googleusercontent.com";
+
+// API base URL. "" = same origin (front the API + UI behind one reverse proxy,
+// recommended). For split-port local dev set the API origin explicitly:
+//   window.API_BASE = "http://localhost:8123";
+window.API_BASE = "";

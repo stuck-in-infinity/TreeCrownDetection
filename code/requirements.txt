@@ -1,0 +1,30 @@
+# Core ML
+torch
+torchvision
+torchaudio
+timm
+
+# Detectron / Detectree
+detectron2
+detectree2
+
+# Geospatial
+rasterio
+geopandas
+shapely
+fiona
+
+# Data
+numpy
+pandas
+scikit-learn
+
+# Visualization
+matplotlib
+seaborn
+
+# Utilities
+tqdm
+Pillow==9.5.0
+simplekml
+Pillow==9.5.0

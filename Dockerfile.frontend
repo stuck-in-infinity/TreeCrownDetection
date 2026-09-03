@@ -1,0 +1,5 @@
+# Simple static frontend served by nginx. The page calls the API at a
+# configurable base URL (default http://localhost:8123), entered in the UI.
+FROM nginx:alpine
+COPY frontend/ /usr/share/nginx/html/
+EXPOSE 80

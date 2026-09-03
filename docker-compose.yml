@@ -1,0 +1,63 @@
+# ════════════════════════════════════════════════════════════════════════
+# Tree-Crown backend — workstation bundle
+#
+#   api       FastAPI backend. Baked venv in the image; code/data are
+#             bind-mounted. Detector weights are mounted from HOST_MODELS_DIR.
+#             Listens on 8000 in the container, published to the
+#             host as 8123 (the port a remote/local Airflow uses to call back).
+#   frontend  Simple static UI (nginx) on host port 8200.
+#
+# Airflow is NOT part of this bundle — it runs wherever the operator hosts it.
+# Both URLs are configurable in .env:
+#   TCP_AIRFLOW_BASE_URL  our backend -> Airflow REST (to start a DAG)
+#   (DAG side) DRONE_API_BASE  Airflow DAG -> our backend (default :8123)
+# ════════════════════════════════════════════════════════════════════════
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        TORCH_INDEX: "${TORCH_INDEX:-https://download.pytorch.org/whl/cpu}"
+    image: ${IMAGE_API:-treecrown-workstation:latest}
+    restart: unless-stopped
+    env_file: .env
+    working_dir: /code
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    ports:
+      # Host port from .env (TCP_API_PORT), container port fixed at 8000.
+      # It was "8123:8000" hardcoded, which meant changing it required editing
+      # this file — and this file is committed, so the change followed every
+      # deployment around.
+      - "${TCP_API_PORT:-8123}:8000"
+    volumes:
+      - ./code:/code              # backend code (mounted, not baked)
+      - ./data:/data              # storage + sqlite DB (empty initially)
+      - ${HOST_MODELS_DIR:?Set HOST_MODELS_DIR in .env to the detector weights folder}:/models:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # lets the container reach a host-local Airflow
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]           # expose all host NVIDIA GPUs to the container
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/livez"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    image: ${IMAGE_FRONTEND:-treecrown-workstation-frontend:latest}
+    restart: unless-stopped
+    ports:
+      - "${TCP_FRONTEND_PORT:-8200}:80"    # open http://localhost:<that port>
+    volumes:
+      - ./frontend:/usr/share/nginx/html
+    depends_on:
+      - api

@@ -1,0 +1,42 @@
+# ════════════════════════════════════════════════════════════════════════
+# Model catalog for the Tree-Crown pipeline.
+# Two independent catalogs:
+#   detectors  -> chosen per project via `model_key`      (Step 0: crown detection)
+#   backbones  -> chosen via `params.model_name`          (Step 1B: DINOv2 features)
+# ════════════════════════════════════════════════════════════════════════
+
+# ── Detectree2 / detectron2 weight files (model_key) ─────────────────────
+
+detectors:
+  urban_cambridge:
+    file: urban_trees_Cambridge_20230630.pth
+    description: Urban trees, Cambridge UK (2023-06-30).
+    default: true
+  paracou:
+    file: 220723_withParacouUAV.pth
+    description: Tropical canopy, Paracou UAV (2022-07-23).
+  randresize:
+    file: 230103_randresize_full.pth
+    description: Random-resize full model (2023-01-03).
+  flexi:
+    file: 250312_flexi.pth
+    description: Generalist — urban + closed canopy
+  tropical_closed:
+    file: 250711_tropical_closed_canopy.pth
+    description: Dense tropical forest only.
+
+# ── DINOv2 feature-extraction backbones (model_name) ─────────────────────
+# `name` must be a valid timm model identifier. `img_size` documents the
+# resolution the backbone is intended to run at (must satisfy the model's
+# patch size; 224 = 16 patches for patch14). Exactly one default: true.
+backbones:
+  - name: vit_small_patch14_dinov2.lvd142m
+    description: DINOv2 ViT-S/14 — fastest, smallest embeddings.
+    img_size: 224
+  - name: vit_base_patch14_dinov2.lvd142m
+    description: DINOv2 ViT-B/14 — balanced default.
+    img_size: 224
+    default: true
+  - name: vit_large_patch14_dinov2.lvd142m
+    description: DINOv2 ViT-L/14 — highest quality, slowest.
+    img_size: 224

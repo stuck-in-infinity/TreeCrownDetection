@@ -1,0 +1,70 @@
+.env
+data/
+models/
+*.pth
+*.pt
+*.ckpt
+*.zip
+__pycache__/
+*.py[cod]
+code/venv/
+code/storage/
+code/predictions/
+.pytest_cache/
+.mypy_cache/
+node_modules/
+.codebase_map_state.json
+frontend/config.js
+/docs/progress_reports
+*.tif
+/scripts
+*.png
+*.pgw
+bbmp_tree_census_july_2026.geojson
+_tile_cache*/
+run_2/
+gt_out/
+gt_compare*/
+gt_sens_*/
+# Generated GT-comparison artifacts (code/scripts/compare_gt.py + make_gt_report.py).
+# The tile PNGs alone run to ~140 MB per run; the report/deck stay tracked.
+gt_compare*/
+docs/progress_reports/*/tiles/
+# Spatial index derived from the raw census geojson by code/scripts/index_census.py
+bbmp_tree_census.gpkg
+# Gujarat Mission 4/5 detection-run review artifacts. Both regenerate from
+# data/storage/projects/<id>/work/run_*; the 1.1 GB run bundle is already
+# covered by *.zip above.
+gujarat_m4_m5_runs.zip
+docs/Gujarat_M4_M5_detection_run_comparison.pptx
+frontend/filebrowser_fetch_test.html
+frontend/index.legacy.html
+frontend/index1.html
+docs/progress_reports
+docs/presentations
+# Local-only patch that restores the "Continue as guest" auth bypass for
+# development. Not shipped: the pushed frontend requires Google sign-in.
+# Re-apply with: git apply .guest-login.patch
+# Remove again with: git apply -R .guest-login.patch
+.guest-login.patch
+
+# ── census / ground-truth research tooling (local-only, untracked) ─────
+# One-off study of whether the BBMP tree census is usable as detectree2
+# training ground truth. Not part of the pipeline: nothing under code/app
+# imports any of it, and the scripts only reference each other. The files
+# stay on the workstation; they are kept out of git so a stray `git add`
+# cannot re-commit them. Kept alongside: run_retention.py (retention driver)
+# and prep_lowres.py (strips alpha from 4-band RGBA orthos before tiling).
+code/scripts/census_species_vote.py
+code/scripts/check_cluster_species.py
+code/scripts/compare_gt.py
+code/scripts/consensus_gt.py
+code/scripts/index_census.py
+code/scripts/make_final_ppt.py
+code/scripts/make_gt_report.py
+code/scripts/make_lalbagh_pairs.py
+code/scripts/make_species_check_fig.py
+code/scripts/make_summary_md.py
+code/scripts/make_tile_compare_fig.py
+code/scripts/tune_detection.py
+docs/FINAL_census_vs_model1.pptx

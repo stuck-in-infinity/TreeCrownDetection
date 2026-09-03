@@ -1,0 +1,28 @@
+# ── API / service layer ───────────────────────────────────────────────
+fastapi
+uvicorn[standard]
+celery
+redis
+SQLAlchemy>=2.0
+pydantic>=2
+pydantic-settings
+python-multipart        # multipart/form-data uploads
+PyYAML                  # reads the external model catalog (models.yaml)
+gdown                   # download orthos from public Google Drive links (/orthomosaic/from-url)
+
+# For Postgres in production (SQLite needs nothing extra):
+# psycopg2-binary
+# alembic               # migrations
+
+# ── pipeline deps (also in requirements.txt) ──────────────────────────
+# Installed on the worker host; the API process does not import them directly.
+#   torch torchvision torchaudio timm
+#   detectron2 detectree2
+#   rasterio geopandas shapely fiona
+#   numpy pandas scikit-learn
+#   matplotlib seaborn
+#   tqdm Pillow==9.5.0 simplekml
+#
+# rasterio + Pillow are also used by the API process to render crown thumbnails
+# and read GeoTIFF metadata; install them in the API env too if you want those
+# endpoints to work there.
