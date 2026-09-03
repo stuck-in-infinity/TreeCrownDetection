@@ -335,4 +335,10 @@ ERROR_CODES = {
     # A transfer ran past TCP_ORTHO_TRANSFER_TIMEOUT_MIN and was stopped: either
     # the upload was aborted between chunks or the Drive child was killed.
     "TRANSFER_TIMEOUT": "TRANSFER_TIMEOUT",
+    # A run was in progress when the process stopped. Written at start-up by
+    # services/startup_recovery.py, never by a request.
+    "SERVER_RESTARTED": "SERVER_RESTARTED",
+    # A run number that this project has never had. Asking for run 9 of a
+    # project with five runs gets this, with the valid range in details.
+    "RUN_NOT_FOUND": "RUN_NOT_FOUND",
 }

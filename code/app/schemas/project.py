@@ -97,6 +97,10 @@ class AnalyzeTrigger(BaseModel):
     # ``_apply_run_config`` saves it onto ``project.params``, so the worker and
     # the run history both record which orthomosaic was used.
     ortho_id: str | None = None
+    # Which run these settings were copied from, when the user opened an older
+    # run and pressed Run analysis. Recorded so the run list can say where a
+    # run came from; it selects nothing and changes no behaviour.
+    based_on_run: int | None = None
     execution_id: str | None = None  # set by Airflow callbacks; runs the compute directly
 
 

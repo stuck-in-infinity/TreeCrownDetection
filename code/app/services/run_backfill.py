@@ -1,26 +1,24 @@
 """Create ``Run`` rows for projects that predate the runs table.
 
-Runs about to be created write their own rows. This exists for the projects
-already in the database when the table appeared: their history lives in the
-``project.runs`` JSON column plus the live fields on the project row.
+New runs write their own rows. This exists for the projects already in the
+database when the table appeared: their history lives in the ``project.runs``
+JSON column plus the live fields on the project row.
 
-Runs once at start-up, alongside ``startup_recovery``, and follows the same two
-rules for the same reasons:
+It runs once at start-up, next to ``startup_recovery``, and follows the same two
+rules for the same reasons. It is safe to run twice — a project that already has
+run rows is skipped, so a restart never duplicates anything. And it never
+raises: a project left un-backfilled shows an empty run list, which somebody can
+put right, whereas a service that will not boot cannot be fixed from the outside.
 
-* **Idempotent.** A project that already has run rows is skipped entirely, so a
-  restart never duplicates anything.
-* **Never raises.** A project left un-backfilled shows an empty run list, which
-  is recoverable. A service that will not boot is not.
-
-What cannot be recovered
-------------------------
-``ortho_id`` comes from ``params['ortho_id']``. A run from before the ortho
-library existed never had one, and the ``ortho`` filename the old archiver wrote
-alongside it is unreliable — it recorded ``project.orthos[0]``, the first ortho
-in the library rather than the one the run used. Where the project has exactly
-one orthomosaic there is no ambiguity and it is used; otherwise ``ortho_id``
-stays NULL and the run shows as "orthomosaic not recorded". Guessing would put
-somebody's run under the wrong survey, which is worse than admitting the gap.
+The one thing it cannot reconstruct is which orthomosaic an old run used.
+``ortho_id`` comes from ``params['ortho_id']``, and a run from before the ortho
+library existed never had one. The ``ortho`` filename the old archiver wrote
+alongside it is no help either: it recorded ``project.orthos[0]``, the first
+ortho in the library rather than the one the run actually used. Where the project
+has exactly one orthomosaic there is nothing to be ambiguous about and it is
+used; otherwise ``ortho_id`` stays NULL and the run shows as "orthomosaic not
+recorded". Guessing would file somebody's run under the wrong survey, which is
+worse than admitting the gap.
 """
 from __future__ import annotations
 

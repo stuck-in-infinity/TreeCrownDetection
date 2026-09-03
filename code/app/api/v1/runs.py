@@ -1,14 +1,16 @@
-"""The run triggers the frontend calls.
+"""Asynchronous run triggers (frontend-facing).
 
-These endpoints return straight away. Each one moves the project into its
-in-progress state, starts the work as an Airflow DAG run or a local background
-thread, and returns the run id. The frontend then polls GET /projects/{id} until
-the project reaches AWAITING_LABELS, COMPLETED or FAILED.
+These are the endpoints the frontend calls. They return immediately:
+atomically move the project into the in-progress state, dispatch the work
+(Airflow DAG run, or a local background thread), and return the run id. The
+frontend then polls GET /projects/{id} until AWAITING_LABELS / COMPLETED /
+FAILED.
 
-The in-progress states are deliberately not states a run can start from, and the
-transition into them is a single conditional update. A second trigger arriving
-while a run is going therefore gets 409 CONFLICT_BUSY, instead of racing the
-first one into the destructive reset_dirs.
+Only one run of a project computes at a time. The in-progress states are
+deliberately not valid launch states, and the transition into them is atomic, so
+a second trigger arriving while a run is active is turned away with
+409 CONFLICT_BUSY instead of racing the first one into reset_dirs, which deletes
+the run folder.
 """
 from datetime import datetime
 
@@ -23,6 +25,7 @@ from app.db import models
 from app.db.session import get_db
 from app.schemas.project import AnalyzeTrigger, FinalizeTrigger
 from app.services.airflow_client import airflow_enabled
+from app.services import run_registry
 from app.services.project_service import USED_RUN_STATES, archive_current_run
 from app.services.run_dispatch import dispatch_analyze, dispatch_finalize
 from app.services.state import transition_if
@@ -33,11 +36,8 @@ log = get_logger("app.api")
 
 
 def _current_request_id():
-    """Read the request id the audit middleware set for this request.
-
-    The default is "-", meaning there is no request, in which case return None
-    for the nullable column.
-    """
+    """Read the request_id ContextVar (minted in the audit middleware); the
+    "-" default means no request scope, so return None for the nullable column."""
     try:
         rid = request_id_var.get()
     except LookupError:
@@ -46,8 +46,8 @@ def _current_request_id():
 
 
 def _classify_dispatch_error(exc: Exception) -> tuple[str, str]:
-    """Turn a dispatch RuntimeError, which carries the reason from
-    airflow_client, into an error code and a hint for the 502 response."""
+    """Map a dispatch RuntimeError (which carries the classified reason from
+    airflow_client) to a §10 code + remediation hint for the human 502 body."""
     text = str(exc).lower()
     if "http" in text and ("returned" in text or "status" in text):
         return ERROR_CODES["AIRFLOW_HTTP_ERROR"], (
@@ -62,16 +62,22 @@ def _classify_dispatch_error(exc: Exception) -> tuple[str, str]:
     )
 
 
-# A new run can only start from these states; the in-progress ones are left out
-# on purpose. Starting from a state whose run has already produced results
-# archives that run and opens a new work/run_<n+1> folder.
+# A NEW run may be launched only from these states (in-progress excluded on
+# purpose). Launching from a used-run state archives that run and opens a fresh
+# work/run_<n+1> folder (one-call re-analyze).
 _ANALYZE_FROM = {"UPLOADED", "AWAITING_LABELS", "LABELS_SUBMITTED", "COMPLETED", "FAILED"}
 _FINALIZE_FROM = {"LABELS_SUBMITTED", "COMPLETED", "FAILED"}
 _BUSY = {"ANALYZING", "FINALIZING"}
 
+#: Every project state that is not a run in flight. Used when the action's real
+#: precondition has already been checked against the RUN, and all the project
+#: gate still has to decide is "is something else computing right now".
+_NOT_BUSY = {"CREATED", "UPLOADED", "AWAITING_LABELS", "LABELS_SUBMITTED",
+             "COMPLETED", "FAILED"}
+
 
 def _gate(db: Session, project, allowed: set[str], in_progress_state: str, action: str):
-    """Take the in-progress state for this run, or raise the matching 409."""
+    """Atomically enter the in-progress state, or raise the right 409."""
     if not transition_if(db, project, allowed, in_progress_state):
         db.refresh(project)
         if project.state in _BUSY:
@@ -111,8 +117,9 @@ def _fail_trigger(db: Session, project, job, exc: Exception) -> None:
     job.finished_at = naive_now()
     db.add(job)
     db.commit()
-    # Only roll back the in-progress state this trigger took. Assigning FAILED
-    # directly could overwrite a state something else has properly moved on to.
+    # Conditional: only roll back the in-progress state this trigger claimed.
+    # A blind assignment could stamp FAILED over a state something else has
+    # legitimately moved on to.
     if transition_if(db, project, _BUSY, "FAILED"):
         project.error = str(exc)
         db.add(project)
@@ -128,7 +135,7 @@ def _mark_dispatched(db: Session, job, run_id: str) -> None:
 
 
 def _validate_trigger_body(project, body) -> None:
-    """Reject a bad request body with 400 before any state is changed."""
+    """Fail fast with 400 before any state transition happens."""
     if not body:
         return
     try:
@@ -151,23 +158,22 @@ def _validate_trigger_body(project, body) -> None:
 
 
 def resolve_run_ortho(project, body):
-    """Decide which orthomosaic this run uses, or raise the matching 4xx.
+    """Decide which orthomosaic this run uses, or raise the right 4xx.
 
-    There are three cases:
+    Three cases, in the order the spec states them:
 
-    * ``ortho_id`` was given, so it must belong to this project and its file
-      must be on disk. An id from another project, or an unknown one, is 404
-      ORTHO_NOT_FOUND rather than 403: the caller already owns this project, the
-      id just is not one of its orthomosaics.
-    * it was left out and the project holds exactly one, so use that one. This
-      is what keeps older projects, frontend builds and scripts working.
-    * it was left out and the project holds several, so 400
-      ORTHO_SELECTION_REQUIRED, with the candidates in ``details`` so a client
-      can show the choice without another call.
+    * ``ortho_id`` given -> it must belong to THIS project and its file must be
+      on disk. A foreign or unknown id is 404 ORTHO_NOT_FOUND, not 403: the
+      caller already owns the project, so the id is simply not one of its own.
+    * omitted, exactly one ortho -> that one. This is what keeps every existing
+      project, every existing frontend build and every script working unchanged.
+    * omitted, several orthos -> 400 ORTHO_SELECTION_REQUIRED, whose ``details``
+      carries the candidate list so a client can render the choice without a
+      second call.
 
-    This function only reads and validates; ``_apply_run_config`` is what saves
-    the decision. That means it can also be called as a check before any state
-    is changed.
+    Pure: it reads, validates and returns; persisting the decision is
+    ``_apply_run_config``'s job, so this can also be used as a pre-flight check
+    before any state transition happens.
     """
     orthos = list(project.orthos or [])
     if not orthos:
@@ -182,12 +188,12 @@ def resolve_run_ortho(project, body):
     requested = getattr(body, "ortho_id", None) if body else None
     from_pin = False
     if not requested and body is not None and getattr(body, "execution_id", None):
-        # This is Airflow calling back into /project/drone_api or /analyze with
-        # execution_id set. The DAG does not necessarily pass every conf key
-        # through, so fall back to what the trigger already saved onto
-        # project.params. This is not done for an ordinary user request, where
-        # quietly reusing the last run's orthomosaic is exactly the ambiguity
-        # the 400 below exists to catch.
+        # Orchestrator callback (Airflow re-entering /project/drone_api or
+        # /analyze with execution_id set). The DAG does not necessarily forward
+        # every conf key, so fall back to the pin the trigger already wrote onto
+        # project.params. Deliberately NOT done for a plain user request: there,
+        # silently reusing the previous run's ortho is exactly the ambiguity the
+        # 400 below exists to prevent.
         requested = (dict(project.params or {})).get("ortho_id")
         from_pin = bool(requested)
     if requested:
@@ -204,8 +210,8 @@ def resolve_run_ortho(project, body):
                 "hint": ("reload the orthomosaic list in step 2 and tick one of its "
                      "entries — this one belongs to a different project"),
             })
-        # The saved orthomosaic has since been deleted. Fall through to the
-        # normal rules rather than 404 a callback the user cannot change.
+        # A pin whose ortho has since been deleted: fall through to the normal
+        # rules rather than 404-ing a callback the user cannot influence.
 
     if len(orthos) == 1:
         only = orthos[0]
@@ -229,12 +235,9 @@ def resolve_run_ortho(project, body):
 
 
 def _assert_ortho_usable(project, ortho) -> None:
-    """Check the selected orthomosaic still has its file.
-
-    A row whose file has gone, after a manual cleanup or an upload that did not
-    finish, would otherwise fail inside the worker with a FileNotFoundError and
-    leave the project FAILED.
-    """
+    """The selected ortho must still have its file. A row whose file vanished
+    (manual cleanup, a half-finished upload) would otherwise fail deep in the
+    worker with a FileNotFoundError and a FAILED project."""
     from app.api.v1.projects import ortho_file_path
     from app.core.storage import project_paths
 
@@ -254,16 +257,17 @@ def _assert_ortho_usable(project, ortho) -> None:
 
 
 def _pin_run_ortho(project, ortho) -> None:
-    """Record the run's orthomosaic on ``project.params``.
+    """Record the run's ortho on ``project.params``.
 
-    params is used rather than a new Job column because it is the one place
-    every dispatch path already shares: the local thread, the Airflow DAG's
-    callback into ``run_analyze``, and a direct ``POST /analyze``. The worker
-    already reads it through ``build_config``, ``archive_current_run`` copies it
-    into the run history as it stands, and it needs no schema change.
+    Chosen over a new ``Job`` column on purpose — see CHANGES.md. In short:
+    params is the one carrier every dispatch path already shares (the local
+    thread, the Airflow DAG's callback into ``run_analyze``, and a direct
+    ``POST /analyze``), it is what ``build_config`` already reads in the worker,
+    it is copied verbatim into ``project.runs`` history by
+    ``archive_current_run``, and it needs no schema change.
 
-    Two keys are stored. ``ortho_id`` is the lasting identity, used by the
-    ``in_use`` check, and ``ortho_stem`` is what the worker finds files with and
+    Both keys are stored: ``ortho_id`` is the durable identity used for
+    ``in_use`` checks, ``ortho_stem`` is what the worker resolves files with and
     what stays readable in the run history.
     """
     params = dict(project.params or {})
@@ -273,17 +277,16 @@ def _pin_run_ortho(project, ortho) -> None:
 
 
 def _apply_run_config(db: Session, project, body, pre_state: str) -> None:
-    """Apply the settings a run was triggered with: its name, model and params.
+    """Apply analyze-time configuration (run name + model + param overrides).
 
-    This is called once the gate has moved the project into ANALYZING, so no
-    other run can be interleaved with it. If the previous state means the
-    current run has already been used, that run is archived first and
-    current_run is incremented, so this run computes into a new folder.
+    Called after the atomic gate has moved the project into ANALYZING, so no
+    concurrent run can interleave. If the previous state had already used the
+    current run, that run is archived first and current_run is bumped so this
+    run computes into a fresh folder (run versioning, v5).
 
-    It also records the run's orthomosaic. That happens after
-    ``archive_current_run``, so the archived entry keeps the previous run's
-    orthomosaic and the new run gets the one just chosen.
-    """
+    Also pins the run's orthomosaic. This runs AFTER ``archive_current_run``, so
+    the archived entry keeps the PREVIOUS run's ortho and the new run gets the
+    newly-selected one."""
     if pre_state in USED_RUN_STATES:
         archive_current_run(db, project, archived_state=pre_state)
 
@@ -301,11 +304,23 @@ def _apply_run_config(db: Session, project, body, pre_state: str) -> None:
         if body.run_name is not None:
             project.run_name = body.run_name.strip() or None
 
-    # Recorded last, so the checked ``ortho_id`` field wins over a raw
-    # ``params.ortho_id`` in a hand-written body. params is merged rather than
-    # replaced, so an old value would otherwise survive. It is resolved here
-    # rather than passed in, because archive_current_run above may have changed
-    # current_run, which the file check depends on.
+    # Which run this one was configured from, when the user opened an older run
+    # and pressed Run analysis. Set last and cleared when absent, for the same
+    # reason the ortho is pinned last: params are MERGED, so a value left over
+    # from the previous run would otherwise be inherited and every later run
+    # would keep claiming it came from run 3.
+    _params = dict(project.params or {})
+    if body is not None and body.based_on_run is not None:
+        _params["based_on_run"] = int(body.based_on_run)
+    else:
+        _params.pop("based_on_run", None)
+    project.params = _params
+
+    # Pinned LAST, so the validated ``ortho_id`` field always wins over a raw
+    # ``params.ortho_id`` in a hand-written body (params is merged, not
+    # replaced, so a stale pin would otherwise survive). Resolved here rather
+    # than passed in because archive_current_run above may have bumped
+    # current_run, which the file-existence check depends on.
     _pin_run_ortho(project, resolve_run_ortho(project, body))
 
     db.add(project)
@@ -322,23 +337,21 @@ def trigger_analyze(
     db: Session = Depends(get_db),
     user: str = Depends(require_api_key),
 ):
-    """Start, or restart, the analysis.
+    """Fire (or re-fire) the analysis. Optional JSON body names the run, picks
+    the orthomosaic (``ortho_id``) and sets the detector / feature extractor /
+    pipeline params in the same call, so the frontend's Analyze tab is a single
+    button.
 
-    The optional JSON body names the run, picks the orthomosaic with
-    ``ortho_id``, and sets the detector, feature extractor and pipeline
-    parameters in the same call, so the frontend's Analyze tab is one button.
-
-    ``ortho_id`` can be left out when the project holds exactly one
-    orthomosaic, which is the case for every project created before the library
-    existed, so older clients keep working.
-    """
+    ``ortho_id`` may be omitted when the project holds exactly one orthomosaic —
+    which is every project that existed before the library — so no client
+    change is required to keep working."""
     if body and body.project_id:
         project = resolve_project(db, user, body.project_id)
 
-    # Resolve the orthomosaic before taking the state, so a bad or missing
-    # choice returns a 400 or 404 and leaves the project as it was, rather than
-    # stuck in ANALYZING. _apply_run_config resolves it again and saves the same
-    # choice once the state is held.
+    # Pre-flight: resolve the ortho BEFORE the state gate, so a bad or missing
+    # selection is a clean 400/404 that leaves the project exactly as it was,
+    # rather than a project stuck in ANALYZING. _apply_run_config re-resolves
+    # and persists the same choice once the gate is held.
     resolve_run_ortho(project, body)
     _validate_trigger_body(project, body)
     pre_state = project.state
@@ -367,10 +380,13 @@ def trigger_analyze(
     }
 
 
+@router.post("/projects/{project_id}/runs/{run}/finalize")
+@router.post("/project/runs/{run}/finalize")
 @router.post("/projects/{project_id}/runs/finalize")
 @router.post("/project/runs/finalize")
 def trigger_finalize(
     request: Request,
+    run: int | None = None,
     body: FinalizeTrigger | None = None,
     project=Depends(get_project),
     db: Session = Depends(get_db),
@@ -388,19 +404,73 @@ def trigger_finalize(
     if body and body.project_id:
         project = resolve_project(db, user, body.project_id)
 
-    n_labels = db.query(models.ClusterLabel).filter_by(project_id=project.id).count()
+    # Which run is being exported. Omitted means the active one — what every
+    # existing caller means. Named, it may be an earlier run that was labelled
+    # and then left.
+    target_run = run if run is not None else (project.current_run or 1)
+    run_row = run_registry.ensure_run(db, project, target_run)
+    db.commit()
+
+    n_labels = db.query(models.ClusterLabel).filter_by(
+        project_id=project.id, run_id=run_row.id
+    ).count()
     if n_labels == 0:
-        log.warning("400 NO_LABELS project=%s action=finalize", project.id)
+        log.warning("400 NO_LABELS project=%s run=%s action=finalize",
+                    project.id, target_run)
         raise HTTPException(400, {
             "code": ERROR_CODES["NO_LABELS"],
-            "message": f"No labels submitted for project {project.id}",
+            "message": (
+                f"Run {target_run} has no labels, so there is nothing to export."
+            ),
             "project_id": project.id,
-            "hint": "submit the cluster table",
+            "hint": "assign a species to each cluster of that run and submit them first",
+            "details": {"run": target_run, "state": run_row.state},
         })
-    _gate(db, project, _FINALIZE_FROM, "FINALIZING", "finalize")
+    if run_row.state not in _FINALIZE_FROM:
+        log.warning("409 INVALID_STATE project=%s run=%s state=%s allowed=%s",
+                    project.id, target_run, run_row.state, sorted(_FINALIZE_FROM))
+        raise HTTPException(409, {
+            "code": ERROR_CODES["INVALID_STATE"],
+            "message": (
+                f"Run {target_run} cannot be exported from state {run_row.state}."
+            ),
+            "project_id": project.id,
+            "hint": "submit that run's labels first",
+            "details": {"run": target_run, "state": run_row.state,
+                        "accepted_states": sorted(_FINALIZE_FROM)},
+        })
+
+    # The project-level gate is the lock: only one run of a project computes at
+    # a time, whichever run that is. It stays exactly as it was, which is what
+    # keeps a finalize of run 2 from starting while run 4 is still analysing.
+    #
+    # Finalizing an OLDER run needs two repairs around it, because the gate is
+    # written in terms of the project:
+    #
+    #  * the gate reads `project.state`, which describes the ACTIVE run. If run
+    #    4 is sitting in AWAITING_LABELS, that is not a finalize-from state,
+    #    and run 2 would be refused for something run 4 is doing. So when the
+    #    target is not the active run, the gate is asked only for the busy
+    #    check — the per-run check above has already decided the real question.
+    #  * `transition_if` mirrors the new state onto the ACTIVE run's row, which
+    #    would mark run 4 as FINALIZING. The active row is put back afterwards.
+    active_number = project.current_run or 1
+    active_row = run_registry.get_run(db, project, active_number)
+    active_state_before = active_row.state if active_row else None
+
+    if target_run == active_number:
+        _gate(db, project, _FINALIZE_FROM, "FINALIZING", "finalize")
+    else:
+        _gate(db, project, _NOT_BUSY, "FINALIZING", "finalize")
+        if active_row is not None and active_state_before:
+            active_row.state = active_state_before
+            db.add(active_row)
+            db.commit()
+    run_registry.set_run_state(db, project, target_run, "FINALIZING")
+
     job = _new_job(db, project, "finalize")
     try:
-        run_id = dispatch_finalize(project.id, job.id, project.current_run)
+        run_id = dispatch_finalize(project.id, job.id, target_run)
     except RuntimeError as exc:
         _fail_trigger(db, project, job, exc)
         code, hint = _classify_dispatch_error(exc)
@@ -423,11 +493,8 @@ def trigger_finalize(
 @router.get("/projects/{project_id}/runs/status")
 @router.get("/project/runs/status")
 def run_status(project=Depends(get_project), db: Session = Depends(get_db)):
-    """The latest job's progress for the active run: its stage and percentage.
-
-    This is what drives the frontend's progress bar, and it is cheap enough to
-    poll every few seconds.
-    """
+    """Latest job's live progress for the active run - drives the frontend
+    progress UI (stage + percentage). Cheap to poll every few seconds."""
     from datetime import datetime as _dt
     jobs = db.query(models.Job).filter_by(project_id=project.id).all()
     job = max(jobs, key=lambda j: (j.started_at or _dt.min), default=None) if jobs else None

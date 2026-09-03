@@ -392,30 +392,46 @@
       .run-when{text-align:left}
     }
 
-    /* Connection diagnostics. */
-    details.conn{background:var(--card);border:1px solid var(--line);
-      border-radius:var(--r);padding:12px 16px;margin:0 0 var(--gap);
-      box-shadow:var(--shadow-1)}
-    details.conn > summary{cursor:pointer;font-size:var(--t-sm);font-weight:600;
-      color:var(--ink-2);list-style:none}
-    details.conn > summary::-webkit-details-marker{display:none}
-    details.conn > summary::before{content:"\25B8";display:inline-block;
-      margin-right:8px;color:var(--muted);transition:transform .15s}
-    details.conn[open] > summary::before{transform:rotate(90deg)}
-    .conn-row{display:grid;grid-template-columns:20px 1fr;gap:9px;
-      align-items:start;padding:8px 0;border-top:1px solid var(--line);
-      font-size:var(--t-sm);line-height:1.5}
-    .conn-row:first-of-type{border-top:0}
-    .conn-mark{font-weight:700;line-height:1.4}
-    .conn-ok .conn-mark{color:var(--ok)}
-    .conn-bad .conn-mark{color:var(--err)}
-    .conn-skip .conn-mark{color:var(--muted)}
-    .conn-row b{display:block}
-    .conn-row .conn-detail{color:var(--muted);font-size:12px;
-      overflow-wrap:anywhere}
-    .conn-row code{background:#f1eee4;border-radius:3px;padding:1px 5px;
-      font-size:11.5px;overflow-wrap:anywhere}
-    #connOut{margin-top:10px}
+    /* Cluster review: plots, and the crowns nearest each cluster centre. */
+    .review{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
+    .review-head{display:flex;flex-wrap:wrap;gap:8px;align-items:baseline;
+      justify-content:space-between;margin-bottom:8px}
+    .review-title{font-weight:600}
+    .review-sub{font-weight:600;margin:10px 0 4px}
+    .review-krow{display:flex;flex-wrap:wrap;gap:6px;align-items:center;
+      margin:10px 0 4px}
+    .kbtn{background:var(--card);border:1px solid var(--line);
+      border-radius:var(--r-sm);padding:4px 10px;font-size:var(--t-sm);
+      font-weight:600;color:var(--ink-2);cursor:pointer}
+    .kbtn:hover{border-color:var(--muted)}
+    .kbtn-rec{border-color:var(--ok)}
+    .kbtn-on{background:var(--ink-2);color:#fff;border-color:var(--ink-2)}
+    .plot-wrap{display:block;margin:6px 0}
+    img.plot{max-width:100%;border:1px solid var(--line);
+      border-radius:var(--r);background:#fff}
+    .crow{padding:9px 0;border-top:1px solid var(--line)}
+    .crow-h{font-size:var(--t-sm);margin-bottom:6px}
+    .crow-empty{font-size:var(--t-sm);font-style:italic}
+    .thumbs{display:flex;flex-wrap:wrap;gap:8px}
+    .thumb-wrap{display:inline-flex;align-items:center;justify-content:center}
+    img.thumb{width:120px;height:120px;object-fit:cover;cursor:zoom-in;
+      border:1px solid var(--line);border-radius:var(--r-sm);background:#fff}
+    img.thumb:hover{border-color:var(--muted)}
+    /* A failed image leaves a labelled tile, never an unexplained gap. */
+    .thumb-bad{display:inline-flex;align-items:center;justify-content:center;
+      min-width:120px;min-height:120px;padding:6px;text-align:center;
+      border:1px dashed var(--line);border-radius:var(--r-sm);
+      color:var(--muted);font-size:12px}
+    .use-k{margin-top:12px}
+
+    /* Full-size crown, opened from a thumbnail. */
+    #crownLb{position:fixed;inset:0;z-index:60;background:rgba(20,18,14,.82);
+      display:flex;flex-direction:column;align-items:center;
+      justify-content:center;gap:10px;padding:24px}
+    #crownLb[hidden]{display:none}
+    #crownLb img{max-width:min(92vw,720px);max-height:78vh;
+      border-radius:var(--r);background:#fff}
+    #crownLbCap{color:#fff;font-size:var(--t-sm)}
 
     /* Failure details: the hint, with the technical detail folded away. */
     .fail-hint{margin-top:7px;padding:8px 11px;border-radius:var(--r-sm);
@@ -1282,18 +1298,6 @@
         <div id="results" class="note"></div>
       </section>
 
-      <!-- Diagnostics. Collapsed by default, and opened automatically the first
-           time a request fails to reach the server, which is when people start
-           guessing at the cause. -->
-      <details id="connBox" class="conn">
-        <summary>Connection check</summary>
-        <p class="muted" style="margin:6px 0 0">
-          Tests each layer between this page and the analysis service, and
-          reports the first one that breaks.
-        </p>
-        <button class="ghost" onclick="runConnectionCheck()" id="btnConn">Run check</button>
-        <div id="connOut"></div>
-      </details>
 
     </main>
 
@@ -2025,6 +2029,14 @@
   </div><!-- /wt-page -->
 
 
+  <!-- Full-size crown, opened from a review thumbnail. Sits here rather than
+       inside the review panel, which is rebuilt on every k change. -->
+  <div id="crownLb" hidden role="dialog" aria-modal="true" aria-label="Crown image"
+       onclick="closeCrown()">
+    <img id="crownLbImg" alt="">
+    <div id="crownLbCap"></div>
+  </div>
+
   <footer>Tree-Crown pipeline &middot; internal tool</footer>
 
 <script>
@@ -2570,116 +2582,6 @@ function preview(text){
   return flat.slice(0, 200) || null;
 }
 
-// ── connection check ────────────────────────────────────────────────────
-// Probes each layer in order and stops at the first that breaks, because a
-// failure downstream makes every later result meaningless noise. Every step
-// prints the exact URL it used: the commonest production fault by far is a
-// wrong base address or an unrouted path prefix, and seeing the URL is usually
-// the whole diagnosis.
-async function runConnectionCheck(){
-  const out = $("connOut"); const btn = $("btnConn");
-  if(!out) return;
-  btn.disabled = true;
-  out.innerHTML = '<div class="muted" style="font-size:13px">checking…</div>';
-
-  const base = apiBase() || pageOrigin();
-  const rows = [];
-  const row = (state, title, detail) => rows.push({state, title, detail});
-  const render = () => {
-    out.innerHTML = rows.map(r =>
-      '<div class="conn-row conn-' + r.state + '">'
-      + '<span class="conn-mark">' + (r.state==="ok"?"&check;":r.state==="bad"?"&times;":"&ndash;") + '</span>'
-      + '<span><b>' + esc(r.title) + '</b>'
-      + (r.detail ? '<span class="conn-detail">' + r.detail + '</span>' : '')
-      + '</span></div>').join("");
-  };
-
-  // 1 — the device
-  if(navigator.onLine === false){
-    row("bad", "This device is offline",
-        "nothing can be reached until the network is back");
-    render(); btn.disabled = false; return;
-  }
-  row("ok", "This device is online", null);
-
-  // 2 — the configuration, before anything is sent
-  const sameOrigin = !apiBase();
-  row("ok", "API address",
-      "<code>" + esc(base) + "</code>"
-      + (sameOrigin ? " <span class=\"muted\">(same site as this page)</span>"
-                    : " <span class=\"muted\">(set by window.API_BASE in config.js)</span>"));
-  if(pageIsHttps() && /^http:\/\//i.test(apiBase())){
-    row("bad", "Blocked before sending: HTTPS page, HTTP API",
-        "the browser refuses this. Give window.API_BASE an https:// address, "
-        + "or set it to \"\" if the API is served from this same site");
-    render(); btn.disabled = false; return;
-  }
-
-  // 3 — does anything answer at the API prefix, and is it us
-  const healthUrl = base + "/api/v1/health";
-  let res = null, text = "", failed = null;
-  try{
-    const ctl = new AbortController();
-    const t = setTimeout(()=>ctl.abort(), 15000);
-    res = await fetch(healthUrl, {signal: ctl.signal});
-    clearTimeout(t);
-    try{ text = await res.text(); }catch(_){}
-  }catch(e){ failed = e; }
-
-  if(failed){
-    const d = (failed.name === "AbortError")
-      ? "no answer within 15 seconds — the service may be down or the address unreachable"
-      : "the request could not be sent at all. The service is down, the address "
-        + "is wrong, or the API is not sending CORS headers for this page's origin. "
-        + "Open the URL above in a new tab: if it loads there but not here, it is CORS";
-    row("bad", "No reply from " + healthUrl, d);
-    render(); btn.disabled = false; return;
-  }
-
-  let ident = null;
-  try{ ident = JSON.parse(text); }catch(_){}
-  const isOurs = !!(ident && ident.service === "tree-crown-pipeline");
-
-  if(!isOurs){
-    row("bad", "Something answered, but it is not the analysis service",
-        "HTTP " + res.status + " from <code>" + esc(healthUrl) + "</code>"
-        + "<br>It replied: <code>" + esc(preview(text) || "(empty)") + "</code>"
-        + "<br>" + (res.status === 404
-            ? "this path is not routed to the service — check window.API_BASE and "
-              + "the proxy's /api/v1/ rule"
-            : "check what sits between this page and that address"));
-    render(); btn.disabled = false; return;
-  }
-  row("ok", "Analysis service reached",
-      "<code>" + esc(healthUrl) + "</code> &rarr; " + esc(ident.service)
-      + " " + esc(ident.api_version || ""));
-
-  // 4 — a real endpoint, with the headers a real call carries
-  try{
-    const dets = await api("/api/v1/detectors");
-    row("ok", "API responding normally",
-        Array.isArray(dets) ? (dets.length + " detector models available")
-                            : "endpoint answered");
-  }catch(e){
-    const d = (e && (e.detail || {}));
-    row("bad", "Service reached, but a real call failed",
-        esc(d.message || e.message || "unknown")
-        + (d.hint ? '<br>' + esc(d.hint) : "")
-        + (d.request_id ? '<br>Request id: <code>' + esc(d.request_id) + '</code>' : ""));
-    render(); btn.disabled = false; return;
-  }
-
-  row("ok", "Everything between this page and the service is working", null);
-  render(); btn.disabled = false;
-}
-
-// Open the diagnostics the moment a transport failure happens — that is when
-// somebody would otherwise start guessing.
-function offerConnectionCheck(){
-  const box = $("connBox");
-  if(box && !box.open){ box.open = true; }
-}
-
 async function api(path, opts={}){
   const url = apiBase() + path;
 
@@ -2705,7 +2607,6 @@ async function api(path, opts={}){
   }catch(e){
     clearTimeout(timer);
     if(e && e.name === "AbortError"){
-      offerConnectionCheck();
       throw transportError("timeout",
         "The server did not answer within "
         + Math.round(timeoutMs / 1000) + " seconds.",
@@ -2714,7 +2615,6 @@ async function api(path, opts={}){
         + "starting it again",
         {url, timeout_ms: timeoutMs});
     }
-    offerConnectionCheck();
     throw diagnoseFetchFailure();
   }
   clearTimeout(timer);
@@ -2730,7 +2630,6 @@ async function api(path, opts={}){
     // data. Both are fixed by refusing to guess.
     let text = "";
     try{ text = await res.text(); }catch(_){}
-    offerConnectionCheck();
     throw foreignResponse(res, text);
   }
 
@@ -2804,14 +2703,12 @@ function apiUpload(path, formData, opts={}){
 
     xhr.onerror = () => {
       disarm();
-      offerConnectionCheck();
       reject(diagnoseFetchFailure());
     };
 
     xhr.onabort = () => {
       disarm();
       if(!stalled) return reject(transportError("aborted", "The upload was cancelled.", null, {url}));
-      offerConnectionCheck();
       reject(transportError("stalled",
         "The upload stopped making progress for "
         + Math.round(UPLOAD_STALL_MS / 1000) + " seconds and was given up on.",
@@ -2835,7 +2732,6 @@ function apiUpload(path, formData, opts={}){
       if(!ct.includes("application/json")){
         // Same reasoning as api(): quote what actually came back rather than
         // guessing. A proxy's HTML error page lands here.
-        offerConnectionCheck();
         return reject(foreignResponse(asResponse(), xhr.responseText || ""));
       }
       let body;
@@ -3135,6 +3031,7 @@ function selectOrtho(id){ toggleOrtho(id, true); }
    the same reason: a reload keeps your place, a new tab starts clean. */
 let ACTIVE_RUN = null;
 const ORTHO_RUNS = {};        // ortho id -> the runs the server listed
+let RUN_BANNER_ORTHO = null;  // the opened run's ortho filename, for the banner
 const ORTHO_RUNS_OPEN = {};   // ortho id -> is the list showing
 const ACTIVE_RUN_KEY = "tcp.activeRun";
 
@@ -3211,12 +3108,17 @@ function renderOrthoRuns(orthoId){
     // here from the state string would be a second copy of a rule that also
     // depends on whether the run has labels.
     const usable = r.can_label || r.can_finalize || r.has_results;
+    // Where this run's settings came from, when it was started from an older
+    // run rather than from whatever happened to be on screen.
+    const lineage = (r.params || {}).based_on_run;
     out += '<li class="orun' + (open ? " is-open" : "") + '">'
         +    '<span class="orun-n">Run ' + r.run + '</span>'
         +    '<span class="orun-name">' + (r.run_name ? esc(r.run_name) : "")
         +      ' <span class="muted">' + esc(words) + '</span>'
         +      (r.label_count ? ' <span class="muted">&middot; ' + r.label_count
                                 + ' named</span>' : '')
+        +      (lineage ? ' <span class="muted">&middot; from run ' + lineage
+                          + '</span>' : '')
         +    '</span>'
         +    '<span class="orun-when">' + esc(runWhen(r.finished_at || r.created_at))
         +    '</span>'
@@ -3234,11 +3136,74 @@ function renderOrthoRuns(orthoId){
 }
 
 // Point steps 3-5 at one run.
+// The settings a run was made with, keyed by the step-3 field that holds each
+// one. Anything not listed here is not something a run records.
+const RUN_PARAM_FIELDS = {
+  p_tile:"tile_size", p_buf:"buffer", p_iou:"iou_threshold",
+  p_conf:"conf_threshold", p_det:"detections_per_image",
+  p_amin:"area_min", p_amax:"area_max", p_msize:"min_size_test",
+  p_pca:"pca_components", backbone:"model_name",
+};
+
+// Put a run's settings back into step 3, so "open run 3" means you can see what
+// it was run with and start the next run from there instead of retyping it.
+// Missing keys leave the field alone: an older run that never recorded a
+// setting should not silently reset it to a default that was never used.
+function applyRunParams(entry){
+  if(!entry) return;
+  const params = entry.params || {};
+
+  for(const [id, key] of Object.entries(RUN_PARAM_FIELDS)){
+    const el = $(id);
+    if(el && params[key] !== undefined && params[key] !== null) el.value = params[key];
+  }
+  const cov = $("p_fullcov");
+  if(cov && params.full_coverage !== undefined) cov.checked = !!params.full_coverage;
+  const kl = $("klist");
+  if(kl && Array.isArray(params.k_list) && params.k_list.length) kl.value = params.k_list.join(",");
+  const epsg = $("p_epsg");
+  if(epsg && entry.source_epsg) epsg.value = entry.source_epsg;
+  const mk = $("modelKey");
+  if(mk && entry.model_key) mk.value = entry.model_key;
+  const rn = $("runname");
+  if(rn) rn.value = entry.run_name || "";
+
+  validateParams();
+}
+
+// Find a run in whatever we already fetched, so opening a run does not depend
+// on the ortho's run list having been expanded first.
+async function runEntry(n){
+  for(const list of Object.values(ORTHO_RUNS)){
+    const hit = (list || []).find(e => e.run === n);
+    if(hit) return hit;
+  }
+  try{
+    const d = await api(withPid("/api/v1/project/runs?run=" + encodeURIComponent(n)));
+    return (d.runs || [])[0] || null;
+  }catch(e){
+    return null;                       // the banner and review still work
+  }
+}
+
 async function openRun(n){
   ACTIVE_RUN = n;
   saveActiveRun();
   await refreshProject();
+
+  // Restore what this run was made with, and point step 2 at its orthomosaic,
+  // so "Run analysis" starts the next run from these settings rather than from
+  // whatever happened to be on screen.
+  const entry = await runEntry(n);
+  if(entry){
+    applyRunParams(entry);
+    if(entry.ortho_id) toggleOrtho(entry.ortho_id, true);
+  }
+  RUN_BANNER_ORTHO = entry && entry.ortho ? entry.ortho : null;
+
   renderRunBanner();
+  loadClusterReview(n);                // this run's clusters, not the newest
+
   const step = $("orthoLib") || $("ainfo");
   if(step && step.scrollIntoView) step.scrollIntoView({behavior:"smooth", block:"start"});
   log("opened run " + n);
@@ -3246,6 +3211,7 @@ async function openRun(n){
 
 function clearActiveRun(){
   ACTIVE_RUN = null;
+  RUN_BANNER_ORTHO = null;
   saveActiveRun();
   renderRunBanner();
   renderOrthos();
@@ -3258,9 +3224,12 @@ function renderRunBanner(){
     el.style.display = "none"; el.innerHTML = ""; return;
   }
   el.style.display = "block";
+  const on = RUN_BANNER_ORTHO ? " (" + esc(RUN_BANNER_ORTHO) + ")" : "";
+  const next = (CURRENT_RUN || 1) + 1;
   el.innerHTML =
-      'You are working on <b>run ' + ACTIVE_RUN + '</b>. Naming the groups and '
-    + 'exporting below apply to that run. '
+      'Working on <b>run ' + ACTIVE_RUN + '</b>' + on + '. Naming the groups and '
+    + 'exporting below apply to that run, and <b>Run analysis</b> will start '
+    + 'run ' + next + ' from these settings. '
     + '<button class="ghost" type="button" onclick="clearActiveRun()">'
     + 'Switch back to the newest run</button>';
 }
@@ -3601,8 +3570,10 @@ async function analyze(){
       }
     };
     // A new analysis always opens a NEW run and works on it. Leaving an older
-    // run selected here would point step 4 at the wrong clustering.
-    ACTIVE_RUN = null; saveActiveRun(); renderRunBanner();
+    // run selected here would point step 4 at the wrong clustering. Note the
+    // run these settings came from first, so the lineage survives the reset.
+    if(ACTIVE_RUN) body.based_on_run = ACTIVE_RUN;
+    ACTIVE_RUN = null; RUN_BANNER_ORTHO = null; saveActiveRun(); renderRunBanner();
     $("astage").textContent="triggering analyze…";
     const triggered=await api("/api/v1/project/drone_api",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
     let c=null;
@@ -3639,93 +3610,167 @@ async function analyze(){
   finally{ $("aprog").style.display="none"; validateParams(); }
 }
 
-// ── Cluster review: plots + per-k CSV, straight from the FileBrowser share ──
-// Skips crown .tif rendering (browsers can't show TIFF). Plots are PNG → shown
-// via <img> (no CORS). The per-k CSV is fetched + rendered as a table; if that
-// is blocked (cross-origin CORS), we fall back to a link. To view crowns the
-// user follows the "Browse all output files" link into the cluster folders.
-function fbFromShareUrl(shareUrl){
-  // shareUrl looks like {public}/share/{hash}. Return {base, hash} or null.
-  const m = (shareUrl||"").match(/^(.*)\/share\/([^/?#]+)/);
-  return m ? { base:m[1], hash:m[2] } : null;
+// ── Cluster review ──────────────────────────────────────────────────────
+// Every picture here is an <img> pointing at our own API, which is same-origin
+// under nginx. The panel this replaced pulled its plots from the FileBrowser
+// raw-download URL instead, which is why "k-selection plot couldn't be loaded"
+// kept appearing: that is a different origin, and it is not there at all when
+// FileBrowser is switched off. Crowns were skipped entirely back then, with a
+// note telling the user to go and open the folder themselves.
+//
+// REVIEW remembers which run is on screen so the k buttons keep asking about
+// the same run, rather than drifting to the newest one mid-comparison.
+const REVIEW = { run:null, recommended:null, files_url:null, ortho:null };
+
+// Fetch and draw one run's review. Used when opening an older run; the analyze
+// path already holds the payload and calls renderClusterReview directly.
+async function loadClusterReview(run){
+  const box = $("clusterReview"); if(!box) return;
+  box.innerHTML = '<p class="muted">loading the review…</p>';
+  try{
+    const q = run ? ("?run=" + encodeURIComponent(run)) : "";
+    renderClusterReview(await api(withPid("/api/v1/project/clustering" + q)));
+  }catch(e){
+    box.innerHTML = explainFull(e);
+  }
 }
-function fbRaw(fb, path){ return `${fb.base}/api/public/dl/${fb.hash}/${path}`; }
-function fbView(fb, path){ return `${fb.base}/share/${fb.hash}/${path}`; }
-function clusteringPath(run){ return `work/run_${run}/step1_output/clustering`; }
 
 function renderClusterReview(c){
-  const box=$("clusterReview"); if(!box) return;
-  const fb=fbFromShareUrl(c && c.files_url);
-  const avail=(c && c.available_k)||[];
-  if(!fb){
-    box.innerHTML='<p class="hint">Enable FileBrowser to preview cluster plots inline. '+
-      'Otherwise use <b>Browse output files</b> above.</p>';
+  const box = $("clusterReview"); if(!box) return;
+  if(!c){ box.innerHTML = ""; return; }
+
+  const avail = c.available_k || [];
+  REVIEW.run = c.run || CURRENT_RUN || 1;
+  REVIEW.recommended = c.recommended_k || null;
+  REVIEW.files_url = c.files_url || null;
+  // The run's own ortho when the payload names one (an older run does), else
+  // the one selected in step 2 — which is what the newest run just used.
+  const oid = c.ortho_id || SELECTED_ORTHO;
+  const orthoName = (ORTHOS.find(o => o.id === oid) || {}).filename || "";
+
+  if(!avail.length){
+    box.innerHTML = '<p class="hint">This run produced no clusters to review.</p>';
     return;
   }
-  const run=CURRENT_RUN||1;
-  const dir=clusteringPath(run);
-  const imgStyle="max-width:100%;border:1px solid var(--line);border-radius:var(--r);background:#fff";
-  // Guaranteed working fallback: a direct link to the run's clustering folder.
-  const folderLink=`<a href="${fbView(fb, dir)}" target="_blank">Open this run's clustering folder in FileBrowser →</a>`;
-  let html='<div style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px">'+
-    '<div style="font-weight:600;margin-bottom:6px">Review clusters</div>'+
-    `<div class="note" style="margin-bottom:8px">${folderLink}</div>`+
-    `<img class="plot" src="${fbRaw(fb, dir+'/k_selection.png')}" alt="k-selection plot" onerror="this.style.display='none';var n=document.getElementById('ksNote');if(n)n.style.display='block'" style="${imgStyle}">`+
-    '<div id="ksNote" class="hint" style="display:none">k-selection plot couldn’t be loaded — use the FileBrowser link above.</div>'+
-    '<div style="margin:10px 0 4px">Compare a k:</div><div id="kBtns">';
+
+  const title = "Review &mdash; run " + REVIEW.run
+    + (orthoName ? " on " + esc(orthoName) : "");
+  const fbLink = REVIEW.files_url
+    ? '<a href="' + escAttr(REVIEW.files_url) + '" target="_blank">Open run folder in FileBrowser &rarr;</a>'
+    : "";
+
+  let html = '<div class="review">'
+    + '<div class="review-head"><div class="review-title">' + title + '</div>'
+    + fbLink + '</div>'
+    + reviewImg(c.k_selection_plot_url, "k-selection plot for run " + REVIEW.run, "plot")
+    + '<div class="review-krow"><span class="muted">Compare a k:</span>';
   for(const k of avail){
-    html+=`<button class="ghost" style="margin:0 6px 6px 0" onclick="showKView(${k})">k=${k}</button>`;
+    const rec = (k === REVIEW.recommended);
+    html += '<button type="button" class="kbtn' + (rec ? " kbtn-rec" : "") + '"'
+      + ' id="kbtn_' + k + '" onclick="showKView(' + k + ')">k=' + k
+      + (rec ? ' <span title="recommended">&bull;</span>' : '') + '</button>';
   }
-  html+='</div><div id="kView"></div>'+
-    '<p class="hint" style="margin-top:8px">To see the actual crown images, click '+
-    '<b>Browse output files</b> above and open '+
-    `<code>${dir}/k&lt;k&gt;/cluster_&lt;n&gt;/</code>.</p></div>`;
-  box.innerHTML=html;
-  // stash share info for showKView
-  box.dataset.base=fb.base; box.dataset.hash=fb.hash; box.dataset.run=run;
-  const start=(c.recommended_k && avail.includes(c.recommended_k)) ? c.recommended_k : avail[0];
+  html += '</div><div id="kView"></div></div>';
+  box.innerHTML = html;
+
+  const start = avail.includes(REVIEW.recommended) ? REVIEW.recommended : avail[0];
   if(start) showKView(start);
 }
 
+// One k: its t-SNE plot, then a row per cluster with the crowns nearest that
+// cluster's centre — the ones that actually say what the group is. The old
+// panel showed no crowns at all.
 async function showKView(k){
-  const box=$("clusterReview"); const view=$("kView"); if(!view) return;
-  const fb={ base:box.dataset.base, hash:box.dataset.hash };
-  const dir=clusteringPath(box.dataset.run);
-  const tsne=fbRaw(fb, `${dir}/tsne_k${k}.png`);
-  const csvPath=`${dir}/k${k}_assignments.csv`;
-  const imgStyle="max-width:100%;border:1px solid var(--line);border-radius:var(--r);background:#fff";
-  view.innerHTML=`<div style="font-weight:600;margin:6px 0">k = ${k}</div>`+
-    `<img class="plot" src="${tsne}" alt="t-SNE k=${k}" onerror="this.style.display='none';var n=document.getElementById('tnote_${k}');if(n)n.style.display='block'" style="${imgStyle}">`+
-    `<div id="tnote_${k}" class="hint" style="display:none">t-SNE plot couldn’t be loaded — `+
-      `<a href="${fbView(fb, `${dir}/tsne_k${k}.png`)}" target="_blank">open in FileBrowser →</a></div>`+
-    `<div id="csv_${k}" class="note" style="margin-top:8px">loading assignments CSV…</div>`;
-  const csvBox=$("csv_"+k);
+  const view = $("kView"); if(!view) return;
+  const run = REVIEW.run;
+
+  document.querySelectorAll(".kbtn").forEach(b => b.classList.remove("kbtn-on"));
+  const btn = $("kbtn_" + k); if(btn) btn.classList.add("kbtn-on");
+
+  const q = "?run=" + encodeURIComponent(run);
+  view.innerHTML = '<div class="review-sub">k = ' + k + '</div>'
+    + reviewImg("/api/v1/project/clustering/" + k + "/tsne.png" + q,
+                "t-SNE plot for k=" + k, "plot")
+    + '<div id="kClusters"><p class="muted">loading crowns…</p></div>';
+
+  const box = $("kClusters");
   try{
-    const r=await fetch(fbRaw(fb, csvPath));
-    if(!r.ok) throw new Error("HTTP "+r.status);
-    csvBox.innerHTML=csvToTable(await r.text());
+    const d = await api(withPid("/api/v1/project/clustering/" + k + "/clusters" + q));
+    const rows = d.clusters || [];
+    if(!rows.length){ box.innerHTML = '<p class="hint">No clusters were written for this k.</p>'; return; }
+
+    let html = "";
+    for(const cl of rows){
+      const name = "cluster_" + cl.cluster;
+      html += '<div class="crow"><div class="crow-h"><b>' + name + '</b>'
+        + '<span class="muted"> &middot; ' + cl.count
+        + (cl.count === 1 ? " crown" : " crowns") + '</span></div>';
+      const crowns = cl.crowns || [];
+      if(!crowns.length){
+        html += '<div class="muted crow-empty">no crowns in this group</div>';
+      }else{
+        html += '<div class="thumbs">';
+        for(const cr of crowns){
+          const alt = name + ", crown " + cr.name;
+          html += '<span class="thumb-wrap">'
+            + '<img class="thumb" loading="lazy" src="' + escAttr(cr.thumb_url) + '"'
+            + ' alt="' + escAttr(alt) + '" title="' + escAttr(cr.name) + '"'
+            + ' onclick="openCrown(this)" onerror="thumbFailed(this)">'
+            + '<span class="thumb-bad" hidden>not available</span></span>';
+        }
+        html += '</div>';
+      }
+      html += '</div>';
+    }
+    // Ordered by distance to the cluster centre when the run recorded it. A run
+    // from before that say so rather than implying these five mean something.
+    if(d.order === "filename"){
+      html += '<p class="hint">This run predates typical-crown ordering, so these '
+            + 'are the first crowns by filename &mdash; that is detection order, '
+            + 'not how typical they are. Re-run the analysis to get the five most '
+            + 'typical crowns per group.</p>';
+    }
+    html += '<button type="button" class="primary use-k" onclick="useK(' + k + ')">'
+          + 'Use k = ' + k + ' and name these groups &darr;</button>';
+    box.innerHTML = html;
   }catch(e){
-    csvBox.innerHTML='CSV can’t be shown inline here — '+
-      `<a href="${fbView(fb, csvPath)}" target="_blank">open k${k}_assignments.csv in FileBrowser →</a>`;
+    box.innerHTML = explainFull(e);
   }
 }
 
-// Minimal CSV → HTML table (first 30 rows). Handles simple quoted fields.
-function csvToTable(text){
-  const rows=text.trim().split(/\r?\n/).slice(0,31).map(parseCsvLine);
-  if(!rows.length) return "";
-  const esc=s=>String(s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
-  let h='<table><tr>'+rows[0].map(c=>`<th>${esc(c)}</th>`).join("")+'</tr>';
-  for(let i=1;i<rows.length;i++) h+='<tr>'+rows[i].map(c=>`<td>${esc(c)}</td>`).join("")+'</tr>';
-  return h+'</table>';
+// Carry the chosen k into step 4 and go there, so the user is not left to copy
+// the number by hand.
+function useK(k){
+  const ck = $("ck"); if(!ck) return;
+  ck.value = k;
+  buildClusterRows();
+  const rows = $("clusterRows");
+  if(rows && rows.scrollIntoView) rows.scrollIntoView({behavior:"smooth", block:"center"});
 }
-function parseCsvLine(line){
-  const out=[]; let cur="", q=false;
-  for(let i=0;i<line.length;i++){ const ch=line[i];
-    if(q){ if(ch==='"'&&line[i+1]==='"'){cur+='"';i++;} else if(ch==='"'){q=false;} else cur+=ch; }
-    else { if(ch==='"')q=true; else if(ch===','){out.push(cur);cur="";} else cur+=ch; } }
-  out.push(cur); return out;
+
+// An <img> that leaves a labelled gap instead of a broken-image icon.
+function reviewImg(src, alt, cls){
+  if(!src) return "";
+  return '<span class="plot-wrap"><img class="' + cls + '" src="' + escAttr(src) + '"'
+    + ' alt="' + escAttr(alt) + '" onerror="thumbFailed(this)">'
+    + '<span class="thumb-bad" hidden>' + esc(alt) + ' &mdash; not available</span></span>';
 }
+
+function thumbFailed(img){
+  img.hidden = true;
+  const note = img.nextElementSibling;
+  if(note) note.hidden = false;
+}
+
+// Crowns are small; full size is still worth a look when deciding a species.
+function openCrown(img){
+  const lb = $("crownLb"); if(!lb) return;
+  $("crownLbImg").src = img.src;
+  $("crownLbImg").alt = img.alt;
+  $("crownLbCap").textContent = img.title || "";
+  lb.hidden = false;
+}
+function closeCrown(){ const lb = $("crownLb"); if(lb) lb.hidden = true; }
 
 // Reactive: called on every #ck / #species input. Renders one row per cluster,
 // preserving any species already picked. Clears silently when k is invalid
@@ -4459,8 +4504,7 @@ window.addEventListener("load", ()=>{
     wireRail();
   };
 
-  // Clicking a walkthrough link you are already on fires no hashchange, so
-  // re-scroll explicitly — same fix the guide already has for its own links.
+
   document.addEventListener("click", function(e){
     var a = e.target.closest && e.target.closest('a[href^="#/walkthrough#"]');
     if(!a || a.getAttribute("href") !== location.hash) return;

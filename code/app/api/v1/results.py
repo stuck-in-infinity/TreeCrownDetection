@@ -1,5 +1,4 @@
-"""The current run's results summary and downloads, plus the run history the
-frontend uses to compare runs."""
+"""Final results summary + downloads (current run) + per-run history/comparison."""
 import csv
 import os
 from datetime import datetime
@@ -10,16 +9,18 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_project
-from app.core.logging import naive_now
+from app.core.logging import ERROR_CODES, get_logger, naive_now
 from app.core.storage import project_paths
+from app.db import models
 from app.db.session import get_db
 from app.services.assets import analyze_asset_fields
 
 router = APIRouter()
+log = get_logger("app.api")
 
 
 class ConsentBody(BaseModel):
-    # 0 = no or not answered, 1 = yes to everything, 2 = unlabelled Step 1 only.
+    # 0 = no / not given, 1 = yes all data, 2 = yes unlabelled (Step-1) only.
     consent: int
 
 
@@ -28,7 +29,7 @@ def _run(project) -> int:
 
 
 def _require_completed(project) -> None:
-    """Return 425 NOT_READY until the run has produced its results."""
+    """425 NOT_READY until the run has actually produced results."""
     if project.state != "COMPLETED":
         raise HTTPException(425, {"code": "NOT_READY",
             "message": f"Results not ready (state {project.state})",
@@ -38,9 +39,9 @@ def _require_completed(project) -> None:
 
 
 def build_results_payload(project) -> dict:
-    """Build the summary and download links for the current run.
+    """Build the final summary + download links for the current run.
 
-    It lives in its own function so POST /finalize can return it directly.
+    Extracted so the synchronous POST /finalize can return it directly.
     """
     p = project_paths(project.id, _run(project))
     master = os.path.join(p["step2_output"], "crown_master.csv")
@@ -105,10 +106,9 @@ def submit_consent(
     project=Depends(get_project),
     db: Session = Depends(get_db),
 ):
-    """Record the user's data-sharing choice, asked for after finalize.
+    """Capture the user's data-sharing consent after finalize.
 
-    0 means no, 1 means all the data may be kept, and 2 means only the
-    unlabelled Step 1 data may be kept.
+    0 = no / not given, 1 = yes to all data, 2 = yes to unlabelled (Step-1) only.
     """
     if body.consent not in (0, 1, 2):
         raise HTTPException(400, {"code": "BAD_REQUEST",
@@ -192,8 +192,7 @@ def download_stac_item(project=Depends(get_project)):
     return FileResponse(f, media_type="application/json", filename="stac_item.json")
 
 
-# Run history: listing the runs and serving each one's results, so the frontend
-# can compare them.
+# -- run history: list + per-run results for comparison (v5) ----------------
 _ASSETS = {
     "kmz": ("step4_output", "species_map.kmz",
             "application/vnd.google-earth.kmz", "species_map.kmz"),
@@ -215,8 +214,8 @@ def _asset_path(project_id: str, run: int, asset: str):
 
 
 def _run_results_payload(project, run: int) -> dict:
-    """Results summary for one run, current or archived, with download URLs for
-    that run. Returns 404 if the run never produced final output."""
+    """Results summary for a specific (possibly archived) run, with run-scoped
+    download URLs. 404s if that run never produced final outputs."""
     p = project_paths(project.id, run)
     master = os.path.join(p["step2_output"], "crown_master.csv")
     kmz = os.path.join(p["step4_output"], "species_map.kmz")
@@ -252,16 +251,51 @@ def _run_results_payload(project, run: int) -> dict:
     return payload
 
 
+def _run_meta_from_rows(db, project) -> list[dict] | None:
+    """Build the history from the ``runs`` table, which is the record.
+
+    The JSON path below predates that table and only ever knew about runs the
+    archiver had written; a run row created by any other path was invisible to
+    it. Rows win wherever they exist, and the JSON stays as the fallback for a
+    project that has not been backfilled yet.
+    """
+    rows = (
+        db.query(models.Run)
+        .filter_by(project_id=project.id)
+        .order_by(models.Run.number)
+        .all()
+    )
+    if not rows:
+        return None
+    orthos = {o.id: o for o in (project.orthos or [])}
+    out = []
+    for r in rows:
+        o = orthos.get(r.ortho_id)
+        out.append({
+            "run": r.number,
+            "run_name": r.name,
+            "params": dict(r.params or {}),
+            "model_key": r.model_key,
+            "state": r.state,
+            "recommended_k": r.recommended_k,
+            "available_k": r.available_k,
+            "ortho": o.filename if o else None,
+            "ortho_id": r.ortho_id,
+            "ortho_stem": o.stem if o else None,
+        })
+    return out
+
+
 def _run_meta(project) -> list[dict]:
-    """Every run, archived and current, oldest first, saying which have results."""
+    """All runs (archived + current), oldest first, with results availability."""
     entries = []
     for h in (project.runs or []):
         entries.append(dict(h))
     params = dict(project.params or {})
-    # Which orthomosaic the current run uses: the value _apply_run_config saved,
-    # falling back to the only one an older single-orthomosaic project could have
-    # used. This entry has the same shape as the ones archive_current_run writes,
-    # so the frontend can treat current and archived runs alike.
+    # The CURRENT run's ortho: the pin written by _apply_run_config, falling back
+    # to the single ortho a pre-library project can only have used. Matches the
+    # shape archive_current_run writes, so the current entry and the archived
+    # ones stay interchangeable to the frontend.
     cur = next(
         (o for o in (project.orthos or []) if o.id == params.get("ortho_id")), None
     )
@@ -284,9 +318,36 @@ def _run_meta(project) -> list[dict]:
         "ortho_id": cur.id if cur else None,
         "ortho_stem": cur.stem if cur else None,
     })
+    return entries
+
+
+def _decorate(db, project, entries: list[dict]) -> list[dict]:
+    """Add per-run facts the run picker needs: the row, the link, and whether
+    the user is allowed to act on it.
+
+    ``can_label`` and ``can_finalize`` are decided HERE and not re-derived in
+    the browser. The rule is not "is the state in this list" — finalize also
+    needs the run to have labels — and a second copy of that rule in JavaScript
+    would be a second thing to keep right. The frontend enables a button when
+    the server says so.
+    """
+    from app.services import run_registry
+    from app.services.filebrowser_client import filebrowser_enabled, run_share_url
+
+    rows = {r.number: r for r in
+            db.query(models.Run).filter_by(project_id=project.id).all()}
+    fb_on = False
+    try:
+        fb_on = filebrowser_enabled() and bool(getattr(project, "share_hash", None))
+    except Exception:                    # noqa: BLE001 - a link is never worth a 500
+        fb_on = False
+    orthos = {o.id: o for o in (project.orthos or [])}
+
     for e in entries:
         run = e.get("run") or 1
         p = project_paths(project.id, run)
+        row = rows.get(run)
+        e["run_id"] = row.id if row else None
         e["is_current"] = run == (project.current_run or 1)
         e["has_results"] = (
             os.path.exists(os.path.join(p["step2_output"], "crown_master.csv"))
@@ -295,28 +356,85 @@ def _run_meta(project) -> list[dict]:
         e["results_url"] = (
             f"/api/v1/project/runs/{run}/results" if e["has_results"] else None
         )
+        e["files_url"] = run_share_url(project.share_hash, run) if fb_on else None
+
+        # The run row is authoritative for state and attribution; the JSON
+        # history is a compatibility view that predates it.
+        if row is not None:
+            e["state"] = row.state
+            e["label_count"] = run_registry.labels_for(db, row)
+            e["can_label"] = run_registry.can_label(row)
+            e["can_finalize"] = run_registry.can_finalize(db, row)
+            e["created_at"] = row.created_at.isoformat() if row.created_at else None
+            e["finished_at"] = row.finished_at.isoformat() if row.finished_at else None
+            if row.ortho_id:
+                e["ortho_id"] = row.ortho_id
+                o = orthos.get(row.ortho_id)
+                if o is not None:
+                    e["ortho"] = o.filename
+                    e["ortho_stem"] = o.stem
+        else:
+            e.setdefault("label_count", 0)
+            e["can_label"] = False
+            e["can_finalize"] = False
     return entries
 
 
 @router.get("/projects/{project_id}/runs")
 @router.get("/project/runs")
-def list_runs(project=Depends(get_project)):
-    """This project's run history, used by the frontend's comparison view."""
+def list_runs(project=Depends(get_project), ortho_id: str | None = None,
+              run: int | None = None, db: Session = Depends(get_db)):
+    """Run history for this project.
+
+    ``ortho_id`` narrows it to the runs done on one orthomosaic — what the
+    library rows in step 2 ask for when they are expanded. A run whose input
+    was never recorded (it predates the ortho library) is deliberately returned
+    by NEITHER filter rather than by all of them: putting somebody's run under
+    the wrong survey is worse than admitting the gap.
+
+    ``run`` narrows it to a single run, for the caller that wants one run's
+    parameters back. A run number this project never had is an error rather
+    than an empty list: silently returning nothing reads as "that run has no
+    results", which is a different and more alarming thing.
+    """
+    entries = _decorate(db, project,
+                        _run_meta_from_rows(db, project) or _run_meta(project))
+    if ortho_id:
+        entries = [e for e in entries if e.get("ortho_id") == ortho_id]
+    if run is not None:
+        known = sorted({e.get("run") for e in entries if e.get("run")})
+        if run not in known:
+            log.warning("404 RUN_NOT_FOUND project=%s run=%s known=%s",
+                        project.id, run, known)
+            raise HTTPException(404, {
+                "code": ERROR_CODES["RUN_NOT_FOUND"],
+                "message": f"This project has no run {run}.",
+                "project_id": project.id,
+                "hint": "check the run history and use a run number it lists",
+                "details": {"run": run, "available_runs": known},
+            })
+        entries = [e for e in entries if e.get("run") == run]
     return {
         "project_id": project.id,
         "current_run": project.current_run or 1,
-        "runs": _run_meta(project),
+        "ortho_id": ortho_id,
+        "runs": entries,
     }
 
 
 @router.get("/projects/{project_id}/runs/{run}/results")
 @router.get("/project/runs/{run}/results")
 def run_results(run: int, project=Depends(get_project)):
-    if run < 1 or run > (project.current_run or 1):
-        raise HTTPException(404, {"code": "NOT_FOUND",
-            "message": f"Run {run} does not exist (runs 1..{project.current_run or 1})",
+    last = project.current_run or 1
+    if run < 1 or run > last:
+        log.warning("404 RUN_NOT_FOUND project=%s run=%s range=1..%s",
+                    project.id, run, last)
+        raise HTTPException(404, {
+            "code": ERROR_CODES["RUN_NOT_FOUND"],
+            "message": f"This project has no run {run}. It has runs 1 to {last}.",
             "project_id": project.id,
-            "hint": "check the run history for this project and use a run number it lists"})
+            "hint": "check the run history for this project and use a run number it lists",
+            "details": {"run": run, "available_runs": list(range(1, last + 1))}})
     return _run_results_payload(project, run)
 
 
@@ -340,7 +458,7 @@ def run_asset(run: int, asset: str, project=Depends(get_project)):
 
 
 def _read_validation(p: dict):
-    """Work out the accuracy and sample count from step3's validation_detail.csv."""
+    """Derive simple metrics from step3's validation_detail.csv (acc + counts)."""
     detail = os.path.join(p["step3_output"], "validation_detail.csv")
     if not os.path.exists(detail):
         return None

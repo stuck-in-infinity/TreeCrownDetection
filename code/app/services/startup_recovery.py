@@ -1,43 +1,34 @@
 """Release runs that a restart killed, so their projects are not stuck forever.
 
-The problem
------------
-A run is dispatched by putting the project into ``ANALYZING`` (or
-``FINALIZING``) and starting the work. When that work runs **in this process** —
+A run starts by putting the project into ``ANALYZING`` (or ``FINALIZING``) and
+kicking off the work. When that work runs in this process —
 ``run_dispatch._run_local`` starts a daemon thread — a container restart kills
-the thread without anybody updating the database. The project is left in
+the thread and nothing updates the database. The project is left in
 ``ANALYZING`` with nothing running.
 
-There is no way out of that state through the API:
+There is no way out of that through the API: ``ANALYZING`` is not a state you
+can re-run from, reconfigure from, or even delete from. The project is unusable
+until somebody edits the database by hand, and on a server that restarts on its
+own schedule, every project mid-run at that moment is lost this way.
 
-  * ``_ANALYZE_FROM`` excludes ``ANALYZING``          -> cannot re-run
-  * ``_BUSY_STATES`` blocks ``PATCH /project``        -> cannot reconfigure
-  * ``_DELETABLE_STATES`` excludes ``ANALYZING``      -> cannot even delete it
+What decides whether a run can be released is who was doing the work, and
+``Job.celery_task_id`` records exactly that, because ``_mark_dispatched`` stores
+whatever ``dispatch_analyze`` returned:
 
-The project is unusable until somebody edits the database by hand. On a server
-that restarts on its own schedule, every project mid-run at that moment is lost
-this way.
-
-What is and is NOT recovered
-----------------------------
-The distinction that matters is **who was doing the work**, and ``Job.celery_task_id``
-records exactly that, because ``_mark_dispatched`` stores whatever
-``dispatch_analyze`` returned:
-
-  * ``"local:<job_id>"`` — the work was a daemon thread in this process. The
-    restart killed it. It is never coming back. **Recover.**
-  * anything else — an Airflow ``dag_run_id``. Airflow is a separate service; the
-    DAG is very likely still running and will call back into ``/compute/*`` when
-    it finishes. Marking that project FAILED would destroy a live run.
-    **Leave alone.**
+  * ``"local:<job_id>"`` — a daemon thread in this process. The restart killed
+    it and it is never coming back, so release it.
+  * anything else — an Airflow ``dag_run_id``. Airflow is a separate service and
+    the DAG is probably still going; it will call back into ``/compute/*`` when
+    it finishes. Marking that project FAILED would destroy a live run, so leave
+    it alone.
   * ``NULL`` — the process died between ``_new_job`` and ``_mark_dispatched``, so
-    nothing was ever dispatched. **Recover.**
+    nothing was ever dispatched. Release it.
 
-That last case is why this cannot simply key off ``airflow_enabled()``: even with
+That last case is why this cannot simply check ``airflow_enabled()``: even with
 Airflow configured, a crash before dispatch leaves an orphan.
 
-Deliberately not a general sweeper. It runs once at start-up, when by definition
-no request is in flight, and only touches rows it can prove are dead.
+This is deliberately not a general sweeper. It runs once at start-up, when no
+request is in flight, and only touches rows it can prove are dead.
 """
 from __future__ import annotations
 

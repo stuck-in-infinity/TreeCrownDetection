@@ -1,35 +1,28 @@
 """The bridge between ``Project`` (one live run) and ``Run`` (all of them).
 
-The problem this solves
------------------------
-Run-scoped facts — state, params, model, recommended/available/chosen k, the run
-name, the failure record — were stored on the ``projects`` row, so a project
-described exactly one run. Moving them wholesale would have meant rewriting
-every state transition in six files in one commit, with no way to ship or test
-it in stages.
+Run-scoped facts — state, params, model, the recommended and chosen k, the run
+name, the failure record — used to live on the ``projects`` row, so a project
+could describe exactly one run. Moving them all at once would have meant
+rewriting every state transition in six files in a single commit, with no way to
+ship or test it in stages. So the project keeps those fields, and this module
+copies them onto the matching ``Run`` row at the few places they change. The
+runs table gets real content from day one, and every existing caller keeps
+working.
 
-Instead the project keeps those fields, and this module mirrors them onto the
-matching ``Run`` row at the few places they change. That gives the runs table
-real content from day one while every existing caller keeps working.
+``Project.state`` is the lock: one computing run per project, enforced as before
+by ``transition_if``'s conditional UPDATE, so a project already ANALYZING fails
+the guard. It doubles as a mirror of the active run, so ``/projects/mine`` still
+has something to show. ``Run.state`` is the truth about one run, and it is what
+the per-run gates read.
 
-Who owns what
--------------
-``Project.state``   the LOCK. One computing run per project, enforced exactly as
-                    before by ``transition_if``'s conditional UPDATE: a project
-                    already ANALYZING fails the guard. Also a mirror of the
-                    active run so ``/projects/mine`` still shows something.
-``Run.state``       the TRUTH about one run. What the per-run gates read.
-
-The two disagree on purpose in one case, and it is the case the whole feature
-exists for: labelling run 2 while run 4 computes. That writes into
+The two disagree on purpose in one case, which is the case this whole feature
+exists for: labelling run 2 while run 4 is computing. That writes into
 ``work/run_2/``, touches no shared file, and moves run 2 to LABELS_SUBMITTED
 while the project stays ANALYZING for run 4.
 
-Never raises
-------------
-Mirroring is bookkeeping. A failure here must not take down the request that was
-doing the real work, so everything is wrapped. A missing mirror is repaired on
-the next transition; a 500 on a successful analyze is not repairable.
+Mirroring is bookkeeping, so nothing here raises. A failure must not take down
+the request that was doing the real work — a missing mirror is repaired on the
+next transition, but a 500 on an analyze that actually succeeded is not.
 """
 from __future__ import annotations
 

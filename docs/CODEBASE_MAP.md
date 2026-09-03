@@ -30,10 +30,12 @@ artifacts under `data/`.
 | Project state machine / status gating | `api/v1/runs.py` (`_gate`), `services/state.py` |
 | Concurrency / "who may compute" | `services/state.py` (state claims), `services/job_claim.py` (job claims) |
 | What states exist | `db/models.py` docstring (top) |
+| Per-run state / an old run's results | `db/models.py` `Run`, `services/run_registry.py` |
 | DB schema / a new column | `code/app/db/models.py` |
 | Env var / config knob | `code/app/core/settings.py` (all `TCP_`-prefixed) |
 | On-disk artifact paths | `code/app/core/storage.py:36` `project_paths()` |
 | The actual ML algorithm | `code/tree_crown_pipeline.py` (steps 1–4) |
+| Crown GeoTIFF → PNG | `code/crown_thumbs.py` (shared by pipeline and API) |
 | Crown detection / downsampling | `code/predict.py` |
 | Which model weights exist | `code/models.yaml` + `core/models_registry.py` |
 | Background job bodies | `code/app/workers/tasks.py` |
@@ -66,10 +68,10 @@ legacy singular `/project/…` (project resolved from header/query by
 | File | Owns |
 |---|---|
 | `projects.py` (601 L) | CRUD, `/detectors`, `/feature-extractors`, ortho upload (`:243`) + from-URL/Drive (`:276`), ground-truth zip upload (`:348`), param validation (`:453`), raster metadata (`:494`), zip-slip guards (`:515`,`:538`) |
-| `runs.py` (288 L) | `runs/analyze`, `runs/finalize`, `runs/status`. State gating `_gate` (`:63`), Job creation (`:86`), run-config apply (`:132`) |
+| `runs.py` | `runs/analyze`, `runs/finalize`, `runs/status`, and `runs/{n}/finalize`. State gating `_gate`, Job creation, run-config apply |
 | `analyze.py` | `drone_api` / `drone_status` (unified-DAG entry) + `POST …/analyze` |
-| `clustering.py` | Cluster review payload, `k-selection.png`, `tsne.png`, per-crown PNGs, detection overlay |
-| `labels.py` | `POST …/labels` — user's cluster→species mapping |
+| `clustering.py` | Cluster review payload, `k-selection.png`, `tsne.png`, per-crown PNGs, detection overlay. Every route takes `?run=N` (defaults to the active run) and gates on `Run.state`; `?k=K` on a crown serves its precomputed thumbnail |
+| `labels.py` | `POST …/labels` and `POST …/runs/{n}/labels` — user's cluster→species mapping, per run |
 | `finalize.py` | `POST …/finalize` |
 | `results.py` (320 L) | Results payload, KMZ/CSV/confusion-matrix/STAC downloads, consent, per-run history (`/runs`, `/runs/{n}/results`) |
 | `compute.py` | **Airflow-only** `POST /compute/analyze`, `/compute/finalize`. Flat response bodies, HTTP-status-as-control-flow (200 ok / 400·404 skip / 500 fail), `Idempotency-Key` replay |
@@ -78,7 +80,7 @@ legacy singular `/project/…` (project resolved from header/query by
 - `settings.py` — pydantic settings, `TCP_` env prefix. Groups: storage/models,
   DB+Redis, Airflow, model defaults, upload cap, `api_key`, `compute_token`,
   `auth_enabled`+`google_client_id`, FileBrowser, `public_base_url`,
-  `celery_eager`, retention, logging.
+  `celery_eager`, `thumbs_per_cluster`, retention, logging.
 - `storage.py` — path authority. `project_root`, `run_dir`, `project_paths`,
   `ensure_project_dirs`, `reset_dirs`, `delete_project_dir`,
   `prune_labelled_outputs`.
@@ -99,7 +101,18 @@ legacy singular `/project/…` (project resolved from header/query by
 - `project_service.py` — `serialize_project`, `archive_current_run` (run
   versioning), `_last_error`.
 - `state.py` — `transition_if()`: single atomic conditional UPDATE, the only
-  correct way to change `Project.state`. Loser gets `409 CONFLICT_BUSY`.
+  correct way to change `Project.state`. Loser gets `409 CONFLICT_BUSY`. Also
+  mirrors the new state onto the active `Run` row.
+- `run_registry.py` — the `Run` table's owner: `get_run`, `ensure_run`,
+  `set_run_state`, `mirror` (Project state → active Run row), `can_label`,
+  `can_finalize`, `labels_for`. `Project.state` stays the compute mutex;
+  `Run.state` is the truth about one run.
+- `run_backfill.py` — `backfill_runs()` at start-up: gives projects that
+  predate the `runs` table one row per run, from `project.runs` JSON.
+  Safe to run twice; never raises.
+- `startup_recovery.py` — `recover_interrupted_runs()` at start-up: releases
+  runs a restart killed (`SERVER_RESTARTED`). Airflow-dispatched runs are
+  left alone. Off via `TCP_STARTUP_RECOVERY_ENABLED=false`.
 - `job_claim.py` — the *other* mutex, for the three endpoints that compute
   inline (`/compute/*`, `/project/analyze`, `/project/finalize`). State cannot
   exclude them (the trigger already moved the project into the in-progress
@@ -112,7 +125,8 @@ legacy singular `/project/…` (project resolved from header/query by
 - `stac.py` (392 L) — `build_stac_item`, `write_stac_item`, WGS84 footprint from
   GeoJSON or ortho, column docs.
 - `assets.py` — STACD asset ids/versions, hosting platform.
-- `filebrowser_client.py` — token, `create_project_share`, `share_url`.
+- `filebrowser_client.py` — token, `create_project_share`, `share_url`,
+  `run_share_url` (share subpath `work/run_<n>`).
 - `activity_log.py` — `append()`, daily file under `data/storage/activity`.
 
 ### Workers (`workers/`)
@@ -147,6 +161,10 @@ legacy singular `/project/…` (project resolved from header/query by
 - `predict.py` — Detectree2/detectron2 wrapper. `get_ortho_gsd`,
   `compute_downsample_scale` (GSD-aware, target `0.025/0.3` m),
   `build_predictor`, `run_detectree2_pipeline`.
+- `crown_thumbs.py` — `tif_to_png_bytes`, `write_thumbnail`. The one place a
+  crown GeoTIFF becomes a PNG, so the thumbnails the pipeline renders during
+  a run and the ones `api/v1/clustering.py` renders on demand look the same.
+  Imports nothing from `app` — the pipeline must stay runnable on its own.
 - `end_to_end_pipeline.py` — thin CLI driver `step0…step4`.
 - `config.py` — standalone/CLI defaults, **not** used by the API (the API builds
   config via `pipeline_adapter.build_config`). Don't confuse the two.
@@ -169,6 +187,7 @@ data/
       work/run_<n>/
         detectree/ ortho/ polygons/
         step1_output/               # crowns, features, clustering/
+          clustering/k<k>/thumbs/   # PNGs of the crowns nearest each centroid
         step2_output/               # species assignment
         step3_output/               # validation, confusion matrix
         step4_output/               # KMZ / GeoJSON / CSV
@@ -180,31 +199,40 @@ Consent `2` prunes `step2/3/4` only (`_LABELLED_OUTPUT_KEYS`).
 
 ---
 
-## 6. Frontend — `frontend/index.html` (single file, ~1250 L)
+## 6. Frontend — `frontend/index.html` (single file, ~4500 L)
 
 `config.js` (gitignored, from `config.js.example`) supplies `window.API_BASE`
 and Google client id. `index.legacy.html` is the old UI — ignore unless asked.
 
+Line numbers drift; the function names are the stable anchors.
+
 | Lines | Region |
 |---|---|
-| 7–172 | CSS (two `<style>` blocks) |
-| 175–617 | Markup: auth gate, `#pastRuns`, step sections (upload → configure → review → finalize), FAQ |
-| 618+ | All JS |
-| 626–718 | `API_BASE`, auth (`initGis`, `requestLogin`, `guestLogin`, `fetchUserInfo`, `signOut`, `onSignedIn`) |
-| 723–845 | `api()` fetch wrapper, project create/`refreshProject`, `populateModels`, ortho upload (file + URL), `pollState` |
-| 847–850 | `backboneImgSize()` — `img_size` comes from the selected DINOv2 option's `data-img`, never from a user field |
-| 852–906 | `analyze()` — reads the parameter form, gates on the EPSG fallback |
-| 908–915 | FileBrowser URL helpers (`fbRaw`/`fbView`) — crown images are fetched from the FileBrowser public share, not the API |
-| 917–1012 | Cluster review: `renderClusterReview`, `showKView`, CSV parsing, `buildClusterRows` |
-| 1013–1129 | `submitLabels`, `finalize`, `rerunFlow`, `newAnalysisFlow`, consent |
-| 1130–1148 | `loadMyProjects` |
-| 1150–1246 | `initGateCanvas` — decorative landing-page canvas animation. Ignore for logic changes. |
+| 7–224, 232–924 | CSS (two `<style>` blocks). Review panel + crown lightbox styles are at the end of the second. |
+| 925–2040 | Markup: auth gate, `#pastRuns`, step sections (upload → configure → review → finalize), `#clusterReview`, `#crownLb`, FAQ |
+| 2042–4220 | Main JS |
+| — `api()` (`:2585`) | fetch wrapper. Classifies transport failures (`transportError`, `diagnoseFetchFailure`, `foreignResponse`) — this is what tells a user *why* a request never arrived |
+| — ortho library | `renderOrthos`, `toggleOrtho`, `toggleOrthoRuns`, `renderOrthoRuns` (shows each run's state, label count and "from run N") |
+| — run selection | `applyRunParams` (`:3152`) puts a run's settings back into step 3; `runEntry`; `openRun` (`:3189`) ticks its ortho, repopulates step 3 and loads that run's review; `renderRunBanner`; `clearActiveRun` |
+| — `analyzeProject()` | reads the parameter form, sends `based_on_run` when started from an older run |
+| — cluster review (`:3638`) | `loadClusterReview`, `renderClusterReview`, `showKView`, `useK`, `reviewImg`, `thumbFailed`, `openCrown`. Every image is an `<img>` against **our own API** (same-origin under nginx) — never FileBrowser |
+| — `submitLabels` (`:3797`), `finalize`, `rerunFlow`, `newAnalysisFlow`, consent |
+| — `loadMyProjects` (`:3940`), `openProject`, `restoreOpenProject` |
+| — `initGateCanvas` (`:4105`) | decorative landing canvas. Ignore for logic changes. |
+| 4222–4515 | Walkthrough add-on (`#wt-page`), self-contained, owns its own `#wts-lb` lightbox |
 
 **Step 3 parameter form** is grouped by pipeline stage, each group a `<details>`
 holding its own model selector: Detection/Detectree2 (`modelKey`, `p_tile`,
 `p_buf`, `p_iou`, `p_conf`) → Crown embedding/DINOv2 (`backbone`) → Clustering
 (`p_pca`, `klist`). `batch_size` and `img_size` are intentionally absent (see §9
 invariants 9–10); `#epsgFallback`/`p_epsg` is hidden unless the ortho had no CRS.
+`RUN_PARAM_FIELDS` maps these field ids to the param names a run records.
+
+**Gone:** the connection-check panel (`#connBox`, `runConnectionCheck`,
+`offerConnectionCheck`) and the FileBrowser URL helpers (`fbRaw`, `fbView`).
+Plots and crowns come from the API now, so there is no cross-origin step left to
+diagnose. The transport classification inside `api()` stayed — that is the part
+that actually explained failures.
 
 ---
 
@@ -295,6 +323,25 @@ invariants 9–10); `#epsgFallback`/`p_epsg` is hidden unless the ortho had no C
 
 Dated **2026-08-15** (branch `newchanges`, last commit `4e42cf7`). Confirm with
 `git status` before trusting; delete entries once merged.
+
+**Per-run state — the `runs` table** (branch `reconcile-backend-trees`). Every
+per-run field that used to live only on `Project` now has a `Run` row:
+`number` (the `n` in `work/run_<n>`, unchanged and still what the pipeline,
+Airflow and `/compute/*` use) plus a uuid `id` the API addresses. `Project.state`
+is unchanged in meaning — the one-computing-run-per-project mutex and a mirror of
+the active run; `Run.state` is the truth about a run. `cluster_labels.run_id`
+ties labels to their run, and `archive_current_run` **no longer deletes them** —
+that deletion was the sole reason an earlier run could not be finished later.
+New routes `POST …/runs/{n}/labels` and `…/runs/{n}/finalize`; `GET …/runs`
+takes `ortho_id` and returns `run_id` + `files_url`. Start-up runs
+`run_backfill.backfill_runs` then `startup_recovery.recover_interrupted_runs`,
+both idempotent and non-raising.
+
+> **This work previously lived in a nested `code/app/app/` copy that nothing
+> imported** (`working_dir: /code` + `uvicorn app.main:app` resolves
+> `code/app/main.py`), so the deployed API served none of it while the frontend
+> already called the run-scoped routes. The trees are now reconciled and the
+> nested copy deleted. If you find a `code/app/app/` again, it is a mistake.
 
 **Multi-orthomosaic library** (uncommitted). `input/ortho/` is now an
 append-only library instead of a single file: upload has append semantics with

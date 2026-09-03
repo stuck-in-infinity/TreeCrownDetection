@@ -41,4 +41,8 @@ def transition_if(db, project, allowed: set[str], new_state: str) -> bool:
     db.commit()
     if affected:
         db.refresh(project)
+        # Keep the run row in step. Every project state change of consequence
+        # comes through here, which makes this the one place worth hooking.
+        from app.services.run_registry import mirror
+        mirror(db, project)
     return bool(affected)

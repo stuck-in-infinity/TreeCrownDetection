@@ -20,6 +20,26 @@ log = get_logger("app.request")
 async def lifespan(app: FastAPI):
     configure_logging()  # set up logging before anything else runs
     init_db()            # convenient in development; production uses Alembic
+
+    # Release runs that a restart killed. A project left in ANALYZING has no way
+    # out through the API — analyze, reconfigure and delete are all refused from
+    # that state — so without this it stays unusable until someone edits the
+    # database. Runs dispatched to Airflow are left alone; see the module.
+    from app.db.session import SessionLocal
+    from app.services.startup_recovery import recover_interrupted_runs
+    # Give projects that predate the runs table their run rows, so the run
+    # picker has something to show. Safe to run twice — it skips projects that
+    # already have rows. Before recovery, so a run released below lands on a
+    # real row.
+    from app.services.run_backfill import backfill_runs
+
+    _db = SessionLocal()
+    try:
+        backfill_runs(_db)
+        recover_interrupted_runs(_db)
+    finally:
+        _db.close()
+
     yield
 
 

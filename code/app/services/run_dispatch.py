@@ -28,7 +28,7 @@ def _conf(project_id: str, job_id: str, run: int | None = None) -> dict:
     return conf
 
 
-def _run_local(task_name: str, project_id: str, job_id: str) -> str:
+def _run_local(task_name: str, project_id: str, job_id: str, run: int | None = None) -> str:
     """Run a Celery task body in a background daemon thread."""
 
     def _target():
@@ -36,7 +36,7 @@ def _run_local(task_name: str, project_id: str, job_id: str) -> str:
 
         task = {"job_a_analyze": job_a_analyze, "job_b_finalize": job_b_finalize}[task_name]
         try:
-            task.apply(args=[project_id, job_id])
+            task.apply(args=[project_id, job_id, run])
         except Exception:
             # The task's own _fail() has already stored the FAILED state and the
             # traceback, so there is nothing left to do here.
@@ -49,10 +49,10 @@ def _run_local(task_name: str, project_id: str, job_id: str) -> str:
 def dispatch_analyze(project_id: str, job_id: str, run: int | None = None) -> str:
     if airflow_enabled():
         return trigger_dag(settings.analyze_dag_id, _conf(project_id, job_id, run))
-    return _run_local("job_a_analyze", project_id, job_id)
+    return _run_local("job_a_analyze", project_id, job_id, run)
 
 
 def dispatch_finalize(project_id: str, job_id: str, run: int | None = None) -> str:
     if airflow_enabled():
         return trigger_dag(settings.finalize_dag_id, _conf(project_id, job_id, run))
-    return _run_local("job_b_finalize", project_id, job_id)
+    return _run_local("job_b_finalize", project_id, job_id, run)
