@@ -422,6 +422,11 @@
       min-width:120px;min-height:120px;padding:6px;text-align:center;
       border:1px dashed var(--line);border-radius:var(--r-sm);
       color:var(--muted);font-size:12px}
+    /* Setting display above outranks the browser's own [hidden]{display:none},
+       so the tile has to be told to obey the attribute it is toggled with —
+       otherwise it sits there permanently and every loaded image gets a
+       "not available" twin. Same guard as #crownLb[hidden] and .wt-lb[hidden]. */
+    .thumb-bad[hidden]{display:none}
     .use-k{margin-top:12px}
 
     /* Full-size crown, opened from a thumbnail. */
@@ -2840,6 +2845,27 @@ function withPid(path){
               + "project_id=" + encodeURIComponent(PID);
 }
 
+// Same job as withPid(), for the URLs the BROWSER fetches rather than fetch().
+// Plots, crown thumbnails and download links are <img src> and <a href>, and
+// neither can carry the X-User-Email header that api() adds — so the server saw
+// them arrive with no project and no caller, fell back to "the newest project
+// owned by `default`", found none (projects are owned by the signed-in email,
+// or by guest@guest.local) and answered 404 PROJECT_NOT_FOUND. Every plot and
+// every thumbnail on the review screen came out as "not available". Naming both
+// in the URL is what makes an image request identical to a JSON one.
+function assetUrl(u){
+  if(!u) return u;
+  let out = String(u);
+  const add = (key, val) => {
+    if(!val || new RegExp("[?&]" + key + "=").test(out)) return;
+    out += (out.indexOf("?") >= 0 ? "&" : "?")
+         + key + "=" + encodeURIComponent(val);
+  };
+  add("project_id", PID);
+  add("user", AUTH.email);
+  return out;
+}
+
 // The orthomosaic library is now editable for the life of the project — adding
 // one cannot disturb a run that already happened, because each run is pinned to
 // the single ortho it was launched with. The only time the controls close is
@@ -3662,7 +3688,7 @@ function renderClusterReview(c){
   let html = '<div class="review">'
     + '<div class="review-head"><div class="review-title">' + title + '</div>'
     + fbLink + '</div>'
-    + reviewImg(c.k_selection_plot_url, "k-selection plot for run " + REVIEW.run, "plot")
+    + reviewImg(assetUrl(c.k_selection_plot_url), "k-selection plot for run " + REVIEW.run, "plot")
     + '<div class="review-krow"><span class="muted">Compare a k:</span>';
   for(const k of avail){
     const rec = (k === REVIEW.recommended);
@@ -3692,7 +3718,7 @@ async function showKView(k){
     // apiBase(), not a bare path: the UI and the API are served from different
     // origins in the default deployment (:8200 and :8123), so a relative URL
     // would ask nginx for an image it does not have.
-    + reviewImg(apiBase() + "/api/v1/project/clustering/" + k + "/tsne.png" + q,
+    + reviewImg(assetUrl(apiBase() + "/api/v1/project/clustering/" + k + "/tsne.png" + q),
                 "t-SNE plot for k=" + k, "plot")
     + '<div id="kClusters"><p class="muted">loading crowns…</p></div>';
 
@@ -3716,7 +3742,7 @@ async function showKView(k){
         for(const cr of crowns){
           const alt = name + ", crown " + cr.name;
           html += '<span class="thumb-wrap">'
-            + '<img class="thumb" loading="lazy" src="' + escAttr(cr.thumb_url) + '"'
+            + '<img class="thumb" loading="lazy" src="' + escAttr(assetUrl(cr.thumb_url)) + '"'
             + ' alt="' + escAttr(alt) + '" title="' + escAttr(cr.name) + '"'
             + ' onclick="openCrown(this)" onerror="thumbFailed(this)">'
             + '<span class="thumb-bad" hidden>not available</span></span>';
@@ -3846,7 +3872,7 @@ async function finalize(){
     let html='<span class="ok">completed.</span>';
     if(r.files_url) html+=` &middot; <a href="${r.files_url}" target="_blank"><b>Browse all output files →</b></a>`;
     html+='<div style="margin-top:6px">downloads:</div><ul style="margin:4px 0">';
-    for(const [k,v] of Object.entries(d)) if(v) html+=`<li><a href="${apiBase()}${v}" target="_blank">${k}</a></li>`;
+    for(const [k,v] of Object.entries(d)) if(v) html+=`<li><a href="${escAttr(assetUrl(apiBase()+v))}" target="_blank">${k}</a></li>`;
     html+='</ul>';
     const dist=r.species_distribution||{};
     if(Object.keys(dist).length) html+='<div>distribution: '+Object.entries(dist).map(([s,n])=>`${s}=${n}`).join(", ")+'</div>';

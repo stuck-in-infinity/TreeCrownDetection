@@ -19,7 +19,7 @@ services:
       dockerfile: Dockerfile
       args:
         TORCH_INDEX: "${TORCH_INDEX:-https://download.pytorch.org/whl/cpu}"
-    image: ${IMAGE_API:-treecrown-workstation:latest}
+    image: ${IMAGE_API:-uavforaliens/treecrown-workstation:cu128}
     restart: unless-stopped
     env_file: .env
     working_dir: /code
@@ -53,7 +53,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.frontend
-    image: ${IMAGE_FRONTEND:-treecrown-workstation-frontend:latest}
+    image: ${IMAGE_FRONTEND:-uavforaliens/treecrown-frontend:latest}
     restart: unless-stopped
     ports:
       - "${TCP_FRONTEND_PORT:-8200}:80"    # open http://localhost:<that port>

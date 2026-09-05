@@ -143,7 +143,8 @@ legacy singular `/project/…` (project resolved from header/query by
 
 ### Auth (`api/deps.py`)
 `require_api_key` (X-API-Key + optional X-User-Email), `require_user`
-(Google GIS headers, **unverified** — audit only, must sit behind a gateway),
+(Google GIS headers, **unverified** — audit only, must sit behind a gateway,
+with a `?user=` query fallback for browser-issued GETs — invariant 16),
 `require_service_token` (X-Service-Token, Airflow), `resolve_project`,
 `get_project`.
 
@@ -316,6 +317,18 @@ that actually explained failures.
 15. SQLite runs in WAL with a 30 s busy timeout (`db/session.py`). Job progress
     is written throughout a run while requests read; the default rollback
     journal turns that into "database is locked".
+16. Anything the **browser** fetches by itself — the review plots, the crown
+    thumbnails, the result downloads — must carry `project_id` *and* `user` in
+    the URL (`frontend/index.html` `assetUrl()`, the `<img>`/`<a>` counterpart
+    of `withPid()`). `<img src>` and `<a href>` send no custom headers, so
+    without them `require_user` reads no identity, `resolve_project` falls back
+    to "newest project owned by `default`", and every image 404s
+    `PROJECT_NOT_FOUND` — projects are owned by the signed-in email (or
+    `guest@guest.local`), never by `default`. Adding a new asset route means
+    routing its URL through `assetUrl()`, not through `withPid()`. The header
+    still wins when both are present; `?user=` is a fallback, and it does not
+    loosen the ownership check — a wrong `user` for a real `project_id` is
+    still 403.
 
 ---
 
