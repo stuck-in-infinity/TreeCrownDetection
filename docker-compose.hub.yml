@@ -101,7 +101,7 @@ services:
     restart: unless-stopped
 
   frontend:
-    image: ${IMAGE_FRONTEND:-anunay12/treecrown-frontend:latest}
+    image: ${IMAGE_FRONTEND:-uavforaliens/treecrown-frontend:latest}
     pull_policy: always
     restart: unless-stopped
     ports:

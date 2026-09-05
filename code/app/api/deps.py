@@ -1,4 +1,4 @@
-from fastapi import Depends, Header, HTTPException
+from fastapi import Depends, Header, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.core.settings import settings
@@ -38,6 +38,7 @@ def require_api_key(
 def require_user(
     x_user_email: str | None = Header(default=None, alias="X-User-Email"),
     x_user_id: str | None = Header(default=None, alias="X-User-Id"),
+    user: str | None = Query(default=None),
 ) -> str:
     """Read the user's identity from the headers the frontend sets.
 
@@ -46,20 +47,30 @@ def require_user(
     The token is not verified here, so this is only safe behind a gateway or on
     an internal network.
 
+    The ``?user=`` query parameter is the same identity by another route, for
+    the requests that cannot carry a header at all. A plot, a crown thumbnail
+    and a download link are fetched by the browser itself — ``<img src>`` and
+    ``<a href>`` send no custom headers — so those URLs have to name the caller
+    in the URL or arrive anonymous. Anonymous meant falling back to "the newest
+    project owned by ``default``", and nobody owns projects as ``default`` once
+    anyone has signed in, so every image on the review screen 404'd. The header
+    wins when both are present; this is a fallback, not an override.
+
     With ``settings.auth_enabled`` False the endpoint is open and this returns
     the email if there is one, otherwise ``"default"``, which keeps development
-    and tests working. With it True, a missing ``X-User-Email`` is rejected with
-    401. The email returned becomes ``Project.user_id``, which is what separates
-    one user's projects from another's.
+    and tests working. With it True, a missing identity is rejected with 401.
+    The email returned becomes ``Project.user_id``, which is what separates one
+    user's projects from another's.
     """
+    email = x_user_email or user
     if not settings.auth_enabled:
-        return x_user_email or "default"
-    if not x_user_email:
+        return email or "default"
+    if not email:
         raise HTTPException(
             status_code=401,
             detail={"code": "UNAUTHENTICATED", "message": "Google sign-in required"},
         )
-    return x_user_email
+    return email
 
 
 def require_service_token(
