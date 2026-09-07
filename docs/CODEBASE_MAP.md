@@ -44,6 +44,7 @@ artifacts under `data/`.
 | Auth / identity headers | `code/app/api/deps.py` |
 | Error envelope + codes | `core/errors.py`, `core/logging.py:298` `ERROR_CODES` |
 | Logging, request ids, IST time | `code/app/core/logging.py` |
+| Who did what (audit ledger) | `main.py` `_should_audit` / `_caller_identity`, `services/activity_log.py` |
 | STAC output | `code/app/services/stac.py` |
 | FileBrowser share links | `services/filebrowser_client.py` |
 | Anything UI | `frontend/index.html` (single file, §6 below) |
@@ -214,7 +215,8 @@ Line numbers drift; the function names are the stable anchors.
 | 2042–4220 | Main JS |
 | — `api()` (`:2585`) | fetch wrapper. Classifies transport failures (`transportError`, `diagnoseFetchFailure`, `foreignResponse`) — this is what tells a user *why* a request never arrived |
 | — ortho library | `renderOrthos`, `toggleOrtho`, `toggleOrthoRuns`, `renderOrthoRuns` (shows each run's state, label count and "from run N") |
-| — run selection | `applyRunParams` (`:3152`) puts a run's settings back into step 3; `runEntry`; `openRun` (`:3189`) ticks its ortho, repopulates step 3 and loads that run's review; `renderRunBanner`; `clearActiveRun` |
+| — run selection | `applyRunParams` (`:3152`) puts a run's settings back into step 3; `runEntry`; `openRun(n, opts)` ticks its ortho, repopulates step 3 and loads that run's review (`opts.scroll:false` keeps the reader where they are); `renderRunBanner`; `clearActiveRun` |
+| — choosing a run to label | `refreshLabelPicker` / `renderLabelPicker` / `pickLabelRun` draw `#labelPicker` in **step 4** from `GET /runs` filtered on the server's `can_label`. Several runs can sit at AWAITING_LABELS at once and the user labels whichever came out best; the step-2 per-ortho list is a browsing aid, not the chooser. Hidden below 2 candidates. `ALL_RUNS` is its cache — clear it when the project changes |
 | — `analyzeProject()` | reads the parameter form, sends `based_on_run` when started from an older run |
 | — cluster review (`:3638`) | `loadClusterReview`, `renderClusterReview`, `showKView`, `useK`, `reviewImg`, `thumbFailed`, `openCrown`. Every image is an `<img>` against **our own API** (same-origin under nginx) — never FileBrowser |
 | — `submitLabels` (`:3797`), `finalize`, `rerunFlow`, `newAnalysisFlow`, consent |
@@ -246,7 +248,12 @@ that actually explained failures.
 - `docker-compose.yml` — local build (`api` + `frontend`).
   `docker-compose.hub.yml` — Docker Hub images (`uavforaliens/treecrown-*`).
   Code, `data/`, `models/` are **bind-mounted**, not baked.
-- `Dockerfile` (backend, `TORCH_INDEX` build arg), `Dockerfile.frontend` (nginx).
+- `Dockerfile` (backend, `TORCH_INDEX` build arg), `Dockerfile.frontend` (nginx,
+  serving `docker/nginx-frontend.conf` so the access log is written to a file as
+  well as stdout).
+- Both compose files pin `logging:` to `json-file` 10 MB × 3 per service, and
+  bind-mount `./data/logs/nginx` so nginx's logs outlive the container. Nothing
+  rotates those two files — README §10 carries a logrotate snippet.
 - `publish.sh` — push images.
 - `.env.example` / `code/.env.example` / `frontend/config.js.example` — the three
   gitignored files a deployment must create.
@@ -329,6 +336,26 @@ that actually explained failures.
     still wins when both are present; `?user=` is a fallback, and it does not
     loosen the ownership check — a wrong `user` for a real `project_id` is
     still 403.
+    The same fallback applies **outside** the dependency: `main._caller_identity`
+    reads header-or-`?user=` so the log context and the audit ledger can name the
+    caller on exactly these requests. Reading only the header there records every
+    download and every crown image as `anonymous`.
+17. The activity ledger records all writes plus the reads that hand data back
+    (`main._AUDIT_GET_MARKERS`: `/results`, `/clustering`, `/crowns/`,
+    `/detection/overlay`). It deliberately does **not** record `/project` or
+    `/runs/status` — `pollState()` hits both every 3 s for the length of a run.
+    A new download or review-asset route needs its marker adding here, or it is
+    invisible to an audit.
+18. Step 1 crops crowns from the **full-resolution** orthomosaic, not from the
+    downsampled raster detection ran on. `predict.run_detectree2_pipeline`
+    returns that downsampled path as its third value; `tasks.py` ignores it
+    (`_downsampled`) and hard-links the original into `work/run_<n>/ortho` via
+    `_place_run_ortho`. Both rasters share a CRS and extent, so the polygons cut
+    the same ground — the downsampled one just costs DINOv2 pixel detail. The
+    CLI (`end_to_end_pipeline.py`) has always done this; the API diverged, and
+    they must not diverge again. The link (not a copy) is safe because uploads
+    always land on a fresh name via `_unique_stem`, so no library file is ever
+    rewritten in place.
 
 ---
 

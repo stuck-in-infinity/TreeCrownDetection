@@ -4,8 +4,9 @@ Nothing here touches an HTTP response: it never changes a body, a header or a
 status code. The module provides:
 
   * ContextVars for the correlation ids (request_id, job_id, project_id,
-    dag_run_id, stage) and a ``ContextFilter`` that copies them onto every
-    ``LogRecord``, using ``"-"`` when one is not set.
+    dag_run_id, stage) plus the caller's user_email, and a ``ContextFilter``
+    that copies them onto every ``LogRecord``, using ``"-"`` when one is not
+    set.
   * ``JsonFormatter``, which writes one JSON object per line including any
     exception, and a plain text formatter for readable development logs.
   * ``configure_logging(force=False)``, which sets up the root logger and is
@@ -92,6 +93,13 @@ dag_run_id_var: contextvars.ContextVar[str] = contextvars.ContextVar(
 stage_var: contextvars.ContextVar[str] = contextvars.ContextVar(
     "stage", default=_DEFAULT
 )
+# Who the request is for. Not a correlation id like the rest, but it travels the
+# same way and belongs on the same records: an error line is a lot more useful
+# when it says whose work failed. The two pipeline tasks set it from the
+# project's owner, since they run long after the request that started them.
+user_email_var: contextvars.ContextVar[str] = contextvars.ContextVar(
+    "user_email", default=_DEFAULT
+)
 
 _CONTEXT_VARS = {
     "request_id": request_id_var,
@@ -99,6 +107,7 @@ _CONTEXT_VARS = {
     "project_id": project_id_var,
     "dag_run_id": dag_run_id_var,
     "stage": stage_var,
+    "user_email": user_email_var,
 }
 
 
@@ -155,7 +164,7 @@ _RESERVED_RECORD_KEYS = {
 _TEXT_FORMAT = (
     "%(asctime)s %(levelname)-7s %(name)s "
     "[req=%(request_id)s job=%(job_id)s proj=%(project_id)s "
-    "dag=%(dag_run_id)s stage=%(stage)s] %(message)s"
+    "dag=%(dag_run_id)s stage=%(stage)s user=%(user_email)s] %(message)s"
 )
 
 _CONFIGURED = False

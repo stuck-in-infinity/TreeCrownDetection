@@ -69,7 +69,9 @@ docker compose -f docker-compose.hub.yml up -d
 docker compose -f docker-compose.hub.yml ps
 docker compose -f docker-compose.hub.yml logs -f api
 docker compose -f docker-compose.hub.yml exec api ls -lh /models
-docker compose -f docker-compose.hub.yml exec api curl -s http://localhost:8123/api/v1/detectors
+# 8000, not 8123: this runs INSIDE the container, and uvicorn binds 8000 there.
+# 8123 is only the host-side published port.
+docker compose -f docker-compose.hub.yml exec api curl -s http://localhost:8000/api/v1/detectors
 ```
 
 Open:

@@ -12,6 +12,18 @@
 #   TCP_AIRFLOW_BASE_URL  our backend -> Airflow REST (to start a DAG)
 #   (DAG side) DRONE_API_BASE  Airflow DAG -> our backend (default :8123)
 # ════════════════════════════════════════════════════════════════════════
+
+# Docker's json-file driver keeps every line a container has ever written, with
+# no ceiling, until the disk fills. Capping it here bounds each service at
+# 30 MB of container log. The api also writes its own rotated app.log and
+# errors.jsonl under /data/logs, which is the copy to read for an audit; this is
+# the safety net for `docker compose logs`.
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   api:
     build:
@@ -21,6 +33,7 @@ services:
         TORCH_INDEX: "${TORCH_INDEX:-https://download.pytorch.org/whl/cpu}"
     image: ${IMAGE_API:-uavforaliens/treecrown-workstation:cu128}
     restart: unless-stopped
+    logging: *default-logging
     env_file: .env
     working_dir: /code
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
@@ -55,9 +68,14 @@ services:
       dockerfile: Dockerfile.frontend
     image: ${IMAGE_FRONTEND:-uavforaliens/treecrown-frontend:latest}
     restart: unless-stopped
+    logging: *default-logging
     ports:
       - "${TCP_FRONTEND_PORT:-8200}:80"    # open http://localhost:<that port>
     volumes:
       - ./frontend:/usr/share/nginx/html
+      # Keep the access and error logs on the host. Without this they live in
+      # the container's writable layer and go when it is replaced, which is
+      # every deploy.
+      - ./data/logs/nginx:/var/log/nginx
     depends_on:
       - api

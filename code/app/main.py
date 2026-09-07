@@ -72,8 +72,46 @@ app.add_middleware(
 
 
 # Methods whose calls are recorded in the activity log, using the sign-in
-# headers the frontend sets.
+# headers the frontend sets. Every write is recorded.
 _AUDIT_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+
+# Reads are recorded too, but only the ones that hand data back — a download, an
+# export or a crown image someone looked at. Recording every GET would bury the
+# ledger: pollState() hits /project and /project/runs/status every three seconds
+# for the whole length of a run, and neither says anything about who saw what.
+# Matched as substrings of the path, so both URL shapes (/projects/{id}/... and
+# the pid-in-query /project/...) and every asset under /results are covered.
+_AUDIT_GET_MARKERS = (
+    "/results",             # summary JSON, KMZ, the CSVs, confusion matrix, STAC
+    "/clustering",          # the review screen's data, k-selection and t-SNE plots
+    "/crowns/",             # individual crown images
+    "/detection/overlay",   # the detection overlay
+)
+
+
+def _should_audit(method: str, path: str) -> bool:
+    """Whether this call belongs in the activity ledger."""
+    if not path.startswith("/api/"):
+        return False
+    if method in _AUDIT_METHODS:
+        return True
+    return method == "GET" and any(m in path for m in _AUDIT_GET_MARKERS)
+
+
+def _caller_identity(request: Request) -> tuple[str | None, str | None]:
+    """The signed-in email and user id behind this request, if any.
+
+    The header is what the frontend's fetch() calls send. The ``?user=``
+    fallback matters just as much here: a download link and a crown image are
+    fetched by the browser itself through <a href> and <img src>, which carry no
+    custom headers, so those requests name the caller in the query string
+    instead (see api/deps.py). Reading only the header would record every
+    download and every crown image as anonymous, which is most of what the
+    ledger is for.
+    """
+    email = request.headers.get("X-User-Email") or request.query_params.get("user")
+    return email, request.headers.get("X-User-Id")
+
 
 # Paths Airflow calls back on.
 _COMPUTE_PATH_PREFIXES = (
@@ -104,10 +142,12 @@ async def audit_requests(request: Request, call_next):
     elif request.client:
         client_ip = request.client.host
 
+    user_email, user_id = _caller_identity(request)
+
     request.state.request_id = request_id
 
     started = time.monotonic()
-    with with_context(request_id=request_id):
+    with with_context(request_id=request_id, user_email=user_email):
         response = await call_next(request)
     latency_ms = int((time.monotonic() - started) * 1000)
 
@@ -118,7 +158,7 @@ async def audit_requests(request: Request, call_next):
         response.headers["X-Request-Id"] = request_id
 
     try:
-        with with_context(request_id=request_id):
+        with with_context(request_id=request_id, user_email=user_email):
             if response.status_code >= 500:
                 log.error(
                     "%s %s -> %s (%dms)",
@@ -133,10 +173,10 @@ async def audit_requests(request: Request, call_next):
         pass
 
     try:
-        if request.method in _AUDIT_METHODS and path.startswith("/api/"):
+        if _should_audit(request.method, path):
             activity_log.append(
-                email=request.headers.get("X-User-Email"),
-                user_id=request.headers.get("X-User-Id"),
+                email=user_email,
+                user_id=user_id,
                 action=f"{request.method} {path}",
                 method=request.method,
                 path=path,
