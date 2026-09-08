@@ -228,12 +228,15 @@ def job_a_analyze(self, project_id: str, job_id: str, run: int | None = None):
     project = db.get(models.Project, project_id)
     job = db.get(models.Job, job_id)
     # Bind correlation context INSIDE the task body: local-dispatch runs this in
-    # a daemon thread and ContextVars don't inherit across threads.
+    # a daemon thread and ContextVars don't inherit across threads. user_id on
+    # the project row is the signed-in email (see api/deps.py), so a failure
+    # logged from in here says whose run it was.
     with with_context(
         job_id=job_id,
         project_id=project_id,
         dag_run_id=(getattr(job, "celery_task_id", None) or ""),
         stage="analyze",
+        user_email=getattr(project, "user_id", None),
     ):
       try:
         # The run this task was dispatched for. Falls back to the active run,
@@ -288,7 +291,7 @@ def job_a_analyze(self, project_id: str, job_id: str, run: int | None = None):
             for stem in stems:
                 src_ortho = _find_ortho(ortho_dir, stem)
                 det_out = os.path.join(paths["detectree"], stem)
-                gj, _overlay, used = predict.run_detectree2_pipeline(
+                gj, _overlay, _downsampled = predict.run_detectree2_pipeline(
                     ortho_path=src_ortho,
                     predictor=predictor,
                     output_dir=det_out,
@@ -300,8 +303,15 @@ def job_a_analyze(self, project_id: str, job_id: str, run: int | None = None):
                     area_max=cfg.AREA_MAX,
                     full_coverage=cfg.FULL_COVERAGE,
                 )
-                # feed Step 1: same-resolution ortho + per-ortho-prefixed polygons
-                shutil.copy(used, os.path.join(paths["ortho"], f"{stem}.tif"))
+                # Feed Step 1 the FULL-RESOLUTION ortho, not the downsampled
+                # copy detection ran on. `_downsampled` exists only because
+                # Detectree2 wants a consistent ground sample distance; cropping
+                # from it would hand DINOv2 a blurrier crown than the survey
+                # actually recorded, and end_to_end_pipeline.py (the CLI running
+                # the same pipeline) has always used the original here. The two
+                # rasters share a CRS and extent, so the same polygons cut the
+                # same ground either way — only the pixel detail differs.
+                _place_run_ortho(src_ortho, os.path.join(paths["ortho"], f"{stem}.tif"))
                 shutil.copy(gj, os.path.join(paths["polygons"], f"{stem}.geojson"))
 
             # ── Step 1: crop -> features -> cluster -> analyse -> t-SNE ─
@@ -353,13 +363,14 @@ def job_b_finalize(self, project_id: str, job_id: str, run: int | None = None):
     logf = None
     project = db.get(models.Project, project_id)
     job = db.get(models.Job, job_id)
-    # Bind correlation context INSIDE the task body (daemon-thread safe; see
-    # job_a_analyze note).
+    # Bind correlation context INSIDE the task body (daemon-thread safe, and
+    # user_email off the project row; see job_a_analyze note).
     with with_context(
         job_id=job_id,
         project_id=project_id,
         dag_run_id=(getattr(job, "celery_task_id", None) or ""),
         stage="finalize",
+        user_email=getattr(project, "user_id", None),
     ):
       try:
         # The run this task was dispatched for. Falls back to the active run,
@@ -503,6 +514,25 @@ def _run_ortho_stems(project, ortho_dir: str) -> list[str]:
         for f in os.listdir(ortho_dir)
         if f.lower().endswith((".tif", ".tiff"))
     )
+
+
+def _place_run_ortho(src: str, dst: str) -> None:
+    """Give the run its own view of the full-resolution orthomosaic at ``dst``.
+
+    A hard link rather than a copy, because these files run to gigabytes and a
+    project accumulates one per run. The link is as good as a copy here: an
+    upload always lands on a fresh name (`_unique_stem`), so nothing ever
+    rewrites a library file in place, and deleting the library entry only drops
+    one name — the run keeps reading the same bytes it started with. Falls back
+    to a real copy when the link cannot be made, which is what happens if
+    input/ and work/ ever end up on different filesystems.
+    """
+    if os.path.exists(dst):
+        os.remove(dst)
+    try:
+        os.link(src, dst)
+    except OSError:
+        shutil.copy(src, dst)
 
 
 def _find_ortho(ortho_dir: str, stem: str) -> str:

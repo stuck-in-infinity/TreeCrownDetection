@@ -489,6 +489,20 @@
     .run-banner{background:rgba(47,107,63,.08);border:1px solid var(--line);
       border-radius:var(--r-sm);padding:8px 12px;margin:0 0 10px;font-size:13px}
     .run-banner b{color:var(--green-d)}
+    /* The step-4 run picker. Sits above the banner: the picker is how you
+       choose, the banner is what you chose. */
+    .run-pick{border:1px solid var(--line);border-radius:var(--r-sm);
+      padding:9px 12px;margin:0 0 10px;font-size:13px}
+    .run-pick-h{color:var(--ink-2);margin-bottom:7px}
+    .run-pick-row{display:flex;flex-wrap:wrap;gap:7px}
+    .rpick{border:1px solid var(--line);background:#fff;border-radius:var(--r-sm);
+      padding:6px 10px;font:inherit;font-size:12.5px;text-align:left;
+      color:var(--ink-2);cursor:pointer;line-height:1.45}
+    .rpick:hover{border-color:var(--muted)}
+    .rpick-on{background:var(--ink-2);color:#fff;border-color:var(--ink-2);
+      cursor:default}
+    .rpick-on .muted,.rpick-on .rpick-sub{color:rgba(255,255,255,.78)}
+    .rpick-sub{display:block;color:var(--muted);font-size:11.5px}
     @media(max-width:620px){
       li.orun{grid-template-columns:auto 1fr;row-gap:3px}
     }
@@ -1238,6 +1252,11 @@
 
       <!-- Step 4: label the clusters. -->
       <section>
+        <!-- Which of the runs ready for names these names apply to. Shown
+             only when there is more than one to choose between; filled by
+             renderLabelPicker(). The picker is how you choose a run, the
+             banner below is confirmation of what you chose. -->
+        <div id="labelPicker" class="run-pick" style="display:none"></div>
         <!-- Which run steps 4 and 5 apply to, shown only when it is not the
              newest one. Filled by renderRunBanner(). -->
         <div id="runBanner" class="run-banner" style="display:none"></div>
@@ -2904,6 +2923,10 @@ async function refreshProject(){
   $("runinfo").innerHTML = run>1
     ? `Current run: <b>${run}</b>${p.run_name?(" &middot; "+p.run_name):""}. Edit parameters and click <b>Run analysis</b> to open another run.`
     : "Run 1. After it finishes, edit parameters (or pick a different orthomosaic) and click <b>Run analysis</b> again to open run 2.";
+  // Which runs are labellable changes whenever a run finishes, is labelled or
+  // is exported — all of which land here. Deliberately not awaited: the picker
+  // is a convenience and every caller wants the project back now.
+  refreshLabelPicker();
   return p;
 }
 
@@ -3077,6 +3100,79 @@ function loadActiveRun(){
 // The run steps 3-5 should act on: what the user picked, else the newest.
 function targetRun(){ return ACTIVE_RUN || CURRENT_RUN || 1; }
 
+/* ── choosing which run to label (step 4) ────────────────────────────────
+   A project can hold several runs sitting at "waiting for names" at once —
+   the same orthomosaic analysed with different settings, kept side by side so
+   the best one can be picked after looking at the crowns. Whichever the user
+   judges best is the one that should get the species names.
+
+   Everything needed for that already existed: openRun() points steps 3-5 at a
+   run, submitLabels() posts to /runs/{n}/labels, and the server decides
+   can_label per run. What was missing was somewhere to CHOOSE. The only run
+   list on the page is folded inside each orthomosaic row up in step 2, two
+   clicks away and behind a disclosure most people never open — so from step 4,
+   where the decision is actually made, there was no sign another run was
+   labellable, let alone a way to switch to it. This is that missing control.
+
+   It lists every labellable run in the project, not only those on the selected
+   orthomosaic: openRun() re-ticks the run's ortho anyway, and a picker that
+   silently hides half the candidates would be worse than none. */
+let ALL_RUNS = null;              // every run in the project, or null if unread
+
+async function refreshLabelPicker(){
+  if(!PID){ ALL_RUNS = null; renderLabelPicker(); return; }
+  try{
+    const d = await api(withPid("/api/v1/project/runs"));
+    ALL_RUNS = (d && d.runs) || [];
+  }catch(e){
+    // A picker is a convenience. Failing to draw one must not disturb the
+    // labelling form underneath it, which works on its own.
+    ALL_RUNS = null;
+  }
+  renderLabelPicker();
+}
+
+function renderLabelPicker(){
+  const el = $("labelPicker"); if(!el) return;
+  // can_label is the server's call, per run — same flag the step-2 list uses.
+  const rows = (ALL_RUNS || []).filter(r => r.can_label)
+                               .sort((a, b) => b.run - a.run);
+  // One candidate is not a choice, and the banner already names it.
+  if(rows.length < 2){ el.style.display = "none"; el.innerHTML = ""; return; }
+
+  const cur = targetRun();
+  let html = '<div class="run-pick-h">'
+    + rows.length + ' runs are ready for names. '
+    + 'The names below apply to the one selected here:</div>'
+    + '<div class="run-pick-row">';
+  for(const r of rows){
+    const on = r.run === cur;
+    const bits = [];
+    if(r.ortho) bits.push(esc(r.ortho));
+    bits.push(esc(RUN_WORDS[r.state] || r.state || ""));
+    if(r.label_count) bits.push(r.label_count + ' named');
+    html += '<button type="button" class="rpick' + (on ? " rpick-on" : "") + '"'
+      + (on ? ' aria-current="true" disabled' : ' onclick="pickLabelRun(' + r.run + ')"')
+      + ' title="' + escAttr((r.run_name || ("Run " + r.run))
+                             + (r.ortho ? " on " + r.ortho : "")) + '">'
+      + '<b>Run ' + r.run + '</b>'
+      + (r.run_name ? ' ' + esc(r.run_name) : '')
+      + '<span class="rpick-sub">' + bits.join(' &middot; ') + '</span>'
+      + '</button>';
+  }
+  el.innerHTML = html + '</div>';
+  el.style.display = "block";
+}
+
+// Switching from the picker must not throw the reader back up to step 2, which
+// is what openRun's scroll does — the whole point is that they are already in
+// step 4 and want to stay there.
+async function pickLabelRun(n){
+  await openRun(n, {scroll:false});
+  const step = $("labelPicker");
+  if(step && step.scrollIntoView) step.scrollIntoView({behavior:"smooth", block:"center"});
+}
+
 function runWhen(iso){
   if(!iso) return "";
   const d = new Date(iso);
@@ -3212,7 +3308,7 @@ async function runEntry(n){
   }
 }
 
-async function openRun(n){
+async function openRun(n, opts){
   ACTIVE_RUN = n;
   saveActiveRun();
   await refreshProject();
@@ -3228,10 +3324,13 @@ async function openRun(n){
   RUN_BANNER_ORTHO = entry && entry.ortho ? entry.ortho : null;
 
   renderRunBanner();
+  renderLabelPicker();                 // move the tick to the run now open
   loadClusterReview(n);                // this run's clusters, not the newest
 
-  const step = $("orthoLib") || $("ainfo");
-  if(step && step.scrollIntoView) step.scrollIntoView({behavior:"smooth", block:"start"});
+  if(!(opts && opts.scroll === false)){
+    const step = $("orthoLib") || $("ainfo");
+    if(step && step.scrollIntoView) step.scrollIntoView({behavior:"smooth", block:"start"});
+  }
   log("opened run " + n);
 }
 
@@ -3240,6 +3339,7 @@ function clearActiveRun(){
   RUN_BANNER_ORTHO = null;
   saveActiveRun();
   renderRunBanner();
+  renderLabelPicker();
   renderOrthos();
 }
 
@@ -3835,6 +3935,7 @@ async function submitLabels(){
     const r=await api(withPid("/api/v1/project/runs/"+targetRun()+"/labels"),
                       {method:"POST",body:fd});
     $("linfo").innerHTML='<span class="ok">labels saved</span> &middot; '+r.state; log("labels submitted");
+    refreshLabelPicker();              // label_count and state just moved
   }catch(e){ $("linfo").innerHTML='<span class="err">'+e.message+'</span>'; }
 }
 
@@ -4061,6 +4162,7 @@ async function openProject(pid){
   ACTIVE_RUN = null;
   Object.keys(ORTHO_RUNS).forEach(k => delete ORTHO_RUNS[k]);
   Object.keys(ORTHO_RUNS_OPEN).forEach(k => delete ORTHO_RUNS_OPEN[k]);
+  ALL_RUNS = null; renderLabelPicker();
   ["ainfo","linfo","results","oinfo","astage"].forEach(id => {
     const el = $(id); if(el) el.innerHTML = "";
   });

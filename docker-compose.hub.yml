@@ -62,11 +62,24 @@
 # The pulled image carries the venv + deps only. code/ and data/ are
 # bind-mounted from this repo; detector weights are mounted from HOST_MODELS_DIR.
 # ════════════════════════════════════════════════════════════════════════
+
+# Docker's json-file driver keeps every line a container has ever written, with
+# no ceiling, until the disk fills. Capping it here bounds each service at
+# 30 MB of container log. The api also writes its own rotated app.log and
+# errors.jsonl under /data/logs, which is the copy to read for an audit; this is
+# the safety net for `docker compose logs`.
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   api:
     image: ${IMAGE_API:-uavforaliens/treecrown-workstation:cu128}
     pull_policy: always
     restart: unless-stopped
+    logging: *default-logging
     env_file: .env
     working_dir: /code
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
@@ -99,15 +112,23 @@ services:
       - ./data/storage/projects:/srv
       - filebrowser_db:/database
     restart: unless-stopped
+    logging: *default-logging
 
   frontend:
     image: ${IMAGE_FRONTEND:-uavforaliens/treecrown-frontend:latest}
     pull_policy: always
     restart: unless-stopped
+    logging: *default-logging
     ports:
       - "8200:80"
     volumes:
       - ./frontend:/usr/share/nginx/html
+      # Keep the access and error logs on the host. Without this they live in
+      # the container's writable layer and go when it is replaced, which is
+      # every `pull` + `up -d`. Writing to a file as well as to stdout needs the
+      # server config baked in by Dockerfile.frontend, so an older published
+      # image will fill this directory but stop echoing to `compose logs`.
+      - ./data/logs/nginx:/var/log/nginx
     depends_on:
       - api
 volumes:
