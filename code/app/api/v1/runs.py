@@ -17,7 +17,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_project, require_api_key, resolve_project
+from app.api.deps import get_project, require_api_key, resolve_project, service_caller
 from app.core.logging import ERROR_CODES, get_logger, naive_now, request_id_var
 from app.core.models_registry import resolve_backbone, resolve_model_path
 from app.core.storage import ensure_project_dirs
@@ -336,6 +336,7 @@ def trigger_analyze(
     project=Depends(get_project),
     db: Session = Depends(get_db),
     user: str = Depends(require_api_key),
+    service: bool = Depends(service_caller),
 ):
     """Fire (or re-fire) the analysis. Optional JSON body names the run, picks
     the orthomosaic (``ortho_id``) and sets the detector / feature extractor /
@@ -346,7 +347,7 @@ def trigger_analyze(
     which is every project that existed before the library — so no client
     change is required to keep working."""
     if body and body.project_id:
-        project = resolve_project(db, user, body.project_id)
+        project = resolve_project(db, user, body.project_id, service=service)
 
     # Pre-flight: resolve the ortho BEFORE the state gate, so a bad or missing
     # selection is a clean 400/404 that leaves the project exactly as it was,
@@ -391,6 +392,7 @@ def trigger_finalize(
     project=Depends(get_project),
     db: Session = Depends(get_db),
     user: str = Depends(require_api_key),
+    service: bool = Depends(service_caller),
 ):
     path_project_id = request.path_params.get("project_id")
     if not path_project_id and not (body and body.project_id):
@@ -402,7 +404,7 @@ def trigger_finalize(
             "hint": "provide: project_id",
         })
     if body and body.project_id:
-        project = resolve_project(db, user, body.project_id)
+        project = resolve_project(db, user, body.project_id, service=service)
 
     # Which run is being exported. Omitted means the active one — what every
     # existing caller means. Named, it may be an earlier run that was labelled

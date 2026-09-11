@@ -96,7 +96,7 @@ def resolve_ortho_path(ortho_path):
             )
         if len(candidates) > 1:
             print(
-                f"⚠️ Multiple orthomosaic images found in {ortho_path}; using the first one: {candidates[0]}"
+                f"Multiple orthomosaic images found in {ortho_path}; using the first one: {candidates[0]}"
             )
         return candidates[0]
     return ortho_path
@@ -223,7 +223,7 @@ def run_detectree2_pipeline(
     print("Sample tiles:", tiles[:5])
 
     if len(tiles) == 0:
-        raise RuntimeError("❌ No tiles generated.")
+        raise RuntimeError("No tiles generated.")
 
     # Step 2: load the detector.
     print("Step 2: Loading model...")
@@ -255,7 +255,7 @@ def run_detectree2_pipeline(
             if os.path.isfile(src):
                 shutil.move(src, dst)
     else:
-        raise RuntimeError("❌ No predictions folder found!")
+        raise RuntimeError("No predictions folder found!")
 
     # Step 4: turn the per-tile predictions into GeoJSON.
     print("Step 4: Convert predictions to GeoJSON...")
@@ -265,7 +265,7 @@ def run_detectree2_pipeline(
     print("GeoJSON files found:", len(geojson_files))
 
     if len(geojson_files) == 0:
-        raise RuntimeError("❌ No GeoJSON generated.")
+        raise RuntimeError("No GeoJSON generated.")
 
     # Step 5: join the per-tile crowns into one layer.
     print("Step 5: Stitch crowns...")

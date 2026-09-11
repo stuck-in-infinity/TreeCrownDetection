@@ -67,7 +67,7 @@ class Config:
     IMG_SIZE = 224                        # input size DINOv2 expects
     BATCH_SIZE = 32                       # lower this if the GPU runs out of memory
     PCA_COMPONENTS = 50                   # None skips the PCA step
-    COPY_TO_CLUSTER_FOLDERS = True        # also copy each crop into its cluster folder
+    COPY_TO_CLUSTER_FOLDERS = True        # also hard-link each crop into its cluster folder
 
     # Step 2: species assignment.
     CHOSEN_K = 6                          # the k picked after looking at Step 1
@@ -100,6 +100,13 @@ def make_dirs(*paths):
     """Create each directory if it is not already there."""
     for p in paths:
         os.makedirs(p, exist_ok=True)
+
+def link_or_copy(src, dst):
+    """Hard-link ``src`` to ``dst``, or copy it when the link cannot be made."""
+    try:
+        os.link(src, dst)
+    except OSError:
+        shutil.copy2(src, dst)
 
 def crown_id_from_gdf(gdf):
     """Read the crown ids out of a GeoDataFrame."""
@@ -202,7 +209,7 @@ def step1_crop_crowns(config):
     for src in ortho_srcs:
         src.close()
     
-    print(f'\n✅ Cropping complete — saved: {total_saved}  failed: {total_failed}')
+    print(f'\n Cropping complete — saved: {total_saved}  failed: {total_failed}')
     print(f'   Crown TIFFs in: {dir_crowns}')
     return dir_crowns
 
@@ -262,7 +269,7 @@ def step1_extract_features(config, dir_crowns, model=None):
                     imgs.append(tf(img))
                     nms.append(os.path.basename(p))
                 except Exception as e:
-                    print(f'  ⚠️ Skipped {p}: {e}')
+                    print(f'   Skipped {p}: {e}')
             
             if not imgs:
                 continue
@@ -390,14 +397,14 @@ def step1_cluster(config, X, names_df, dir_crowns):
         for ci in range(k):
             os.makedirs(os.path.join(k_dir, f'cluster_{ci}'), exist_ok=True)
         
-        # Copy each crown image into its cluster's folder, so a person can look
+        # Link each crown image into its cluster's folder, so a person can look
         # through the clusters as ordinary folders of pictures.
         if config.COPY_TO_CLUSTER_FOLDERS:
             for _, row in cl_df.iterrows():
                 src = os.path.join(dir_crowns, row['image_name'])
                 dst = os.path.join(k_dir, f'cluster_{row["cluster"]}', row['image_name'])
                 if os.path.exists(src) and not os.path.exists(dst):
-                    shutil.copy2(src, dst)
+                    link_or_copy(src, dst)
         
         # Small PNGs of the most typical crowns in each cluster, so the review
         # screen has something to show without converting GeoTIFFs on the fly.
@@ -416,9 +423,9 @@ def step1_cluster(config, X, names_df, dir_crowns):
         blank_map_path = os.path.join(dir_cluster, f'k{k}_cluster_species_map.csv')
         blank_map.to_csv(blank_map_path, index=False)
     
-    print(f'\n✅ Clustering done for all k values.')
-    print(f'   ➡ Browse cluster folders in: {dir_cluster}')
-    print(f'   ➡ Fill in the species column in k{{chosen_k}}_cluster_species_map.csv')
+    print(f'\nClustering done for all k values.')
+    print(f'   Browse cluster folders in: {dir_cluster}')
+    print(f'   Fill in the species column in k{{chosen_k}}_cluster_species_map.csv')
     
     return all_cluster_labels, inertia_vals, silhouette_vals, db_vals, dir_cluster
 
@@ -460,7 +467,7 @@ def step1_analyze_k(config, inertia_vals, silhouette_vals, db_vals, dir_cluster)
     print(rec_df.to_string(index=False))
     
     best_k_auto = int(rec_df.iloc[0]['k'])
-    print(f'\n  ⭐ Auto-recommended k = {best_k_auto}')
+    print(f'\n  Auto-recommended k = {best_k_auto}')
     
     # Draw the three metrics side by side.
     fig, axes = plt.subplots(1, 3, figsize=(15, 4.5))
@@ -541,7 +548,7 @@ def step1_tsne(config, X, names_df, all_cluster_labels, dir_cluster):
                    dpi=150, bbox_inches='tight')
         plt.close(fig)
     
-    print('✅ Step 1 complete.')
+    print(' Step 1 complete.')
 
 
 # Step 2: turn the cluster names into species labels on every crown.
@@ -578,7 +585,7 @@ def step2_assign_species(config):
     # Warn about clusters the user left blank.
     blank_rows = cluster_map_df['species'].isna() | (cluster_map_df['species'].astype(str).str.strip() == '')
     if blank_rows.any():
-        print(f'\n⚠️  {blank_rows.sum()} cluster(s) still have blank species')
+        print(f'\n  {blank_rows.sum()} cluster(s) still have blank species')
         print('   These will be labeled "unlabelled"')
     
     # Normalise the species names to the pipeline's form.
@@ -660,21 +667,21 @@ def step2_assign_species(config):
     print(f'    crown_master.csv')
     print(f'    polygon_species.csv')
     
-    # Copy each crown image into a folder named after its species.
+    # Link each crown image into a folder named after its species.
     dir_crowns = os.path.join(config.STEP1_OUTPUT, 'crowns')
     unique_species = sorted(set(v for v in cluster_to_species.values() if v != 'unlabelled'))
     
     for sp in unique_species + ['unlabelled']:
         os.makedirs(os.path.join(dir_species, sp), exist_ok=True)
     
-    for _, row in tqdm(assign_df.iterrows(), total=len(assign_df), desc='Copying TIFFs'):
+    for _, row in tqdm(assign_df.iterrows(), total=len(assign_df), desc='Linking TIFFs'):
         sp = row['species']
         src = os.path.join(dir_crowns, row['image_name'])
         dst = os.path.join(dir_species, sp, row['image_name'])
         if os.path.exists(src) and not os.path.exists(dst):
-            shutil.copy2(src, dst)
+            link_or_copy(src, dst)
     
-    print('\n✅ Step 2 complete.')
+    print('\n Step 2 complete.')
 
 
 # Step 3: score the result against ground truth, if there is any.
@@ -688,7 +695,7 @@ def step3_validate(config):
     GT_FOLDER = config.GROUND_TRUTH_CSV  # reuse variable as folder path
 
     if not os.path.exists(GT_FOLDER):
-        print('❌ Ground truth folder not found')
+        print(' Ground truth folder not found')
         return
 
     val_output = config.STEP3_VALIDATION_OUTPUT or os.path.join(config.STEP2_OUTPUT, 'step3_validation')
@@ -727,7 +734,7 @@ def step3_validate(config):
     print(f'  Matched samples: {len(val_df)}')
 
     if len(val_df) == 0:
-        print('❌ No matches found')
+        print(' No matches found')
         return
 
     # Score the agreement.
@@ -760,7 +767,7 @@ def step3_validate(config):
 
     val_df.to_csv(os.path.join(val_output, 'validation_detail.csv'), index=False)
 
-    print('\n✅ Folder-based validation complete.')
+    print('\n Folder-based validation complete.')
 
 
 # Step 4: export the species map as a KMZ for Google Earth.
@@ -878,7 +885,7 @@ def step4_export_kmz(config):
     os.remove(kml_path)
     
     size_mb = os.path.getsize(kmz_path) / 1e6
-    print(f'\n✅ KMZ saved: {kmz_path}')
+    print(f'\n KMZ saved: {kmz_path}')
     print(f'   File size: {size_mb:.1f} MB')
     print(f'   → Open in Google Earth Pro or earth.google.com')
 
@@ -942,7 +949,7 @@ Workflow:
     if args.config:
         print(f'Loading config from: {args.config}')
         config = load_config(args.config)
-        print('✅ External config loaded successfully.')
+        print(' External config loaded successfully.')
     else:
         print('No --config file specified. Using built-in Config class.')
         print('Tip: copy config_example.py → config.py, edit paths, then run:')
@@ -968,8 +975,8 @@ Workflow:
         print('\n' + '='*70)
         print('STEP 1 COMPLETE')
         print('='*70)
-        print(f'\n📁 Outputs in: {config.STEP1_OUTPUT}')
-        print('\n🔴 NEXT STEPS:')
+        print(f'\n Outputs in: {config.STEP1_OUTPUT}')
+        print('\n NEXT STEPS:')
         print('  1. Browse cluster folders in: clustering/k{{k}}/')
         print('  2. Choose your k value')
         print('  3. Fill in the species column in: clustering/k{{k}}_cluster_species_map.csv')
@@ -985,8 +992,8 @@ Workflow:
         print('\n' + '='*70)
         print('STEP 2 COMPLETE')
         print('='*70)
-        print(f'\n📁 Outputs in: {config.STEP2_OUTPUT}')
-        print('\n🔴 NEXT STEPS:')
+        print(f'\n Outputs in: {config.STEP2_OUTPUT}')
+        print('\n NEXT STEPS:')
         print('  - (Optional) Run validation: python tree_crown_pipeline.py --step 3')
         print('  - Export to KMZ: python tree_crown_pipeline.py --step 4')
         
@@ -1005,7 +1012,7 @@ Workflow:
         print('\n' + '='*70)
         print('PIPELINE COMPLETE')
         print('='*70)
-        print(f'\n📁 Final outputs:')
+        print(f'\n Final outputs:')
         print(f'  - Species assignments: {config.STEP2_OUTPUT}/crown_master.csv')
         print(f'  - Google Earth KMZ: {config.STEP4_OUTPUT}/species_map.kmz')
         if os.path.exists(config.GROUND_TRUTH_CSV):

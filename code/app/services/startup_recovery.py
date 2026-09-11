@@ -92,7 +92,7 @@ def _failure_record(job, orchestrated: bool = False) -> str:
 _AIRFLOW_DONE = ("success", "failed", "skipped", "upstream_failed")
 
 
-def _airflow_finished(dag_run_id: str) -> bool:
+def _airflow_finished(dag_run_id: str, dag_id: str) -> bool:
     """True when Airflow says this DAG run is over, or has never heard of it.
 
     Only ever returns True on a definite answer. Anything else — Airflow
@@ -104,13 +104,14 @@ def _airflow_finished(dag_run_id: str) -> bool:
     from app.services.airflow_client import get_dag_run_state
 
     try:
-        state = (get_dag_run_state(dag_run_id, timeout=5) or "").strip().lower()
+        state = (get_dag_run_state(dag_run_id, dag_id=dag_id, timeout=5) or "").strip().lower()
     except Exception as exc:                  # noqa: BLE001
         # 404 means Airflow has no such run: it was purged, or it never survived
         # whatever killed this service. Either way nothing is running it.
         # `get_dag_run_state` raises RuntimeError carrying the status in its text.
         if "404" in str(exc):
-            log.info("airflow has no dag run %s; treating it as finished", dag_run_id)
+            log.info("airflow has no dag run %s in %s; treating it as finished",
+                     dag_run_id, dag_id)
             return True
         log.warning("could not ask airflow about dag run %s (%s); leaving it alone",
                     dag_run_id, exc)
@@ -148,13 +149,14 @@ def _is_orphaned(job) -> bool:
     #
     # Airflow is the only thing that actually knows, so ask it.
     from app.services.airflow_client import airflow_enabled
+    from app.services.run_dispatch import dag_id_for_job
 
     if not airflow_enabled():
         # No orchestrator is configured, so nothing can be running this DAG run;
         # it is a leftover from a previous deployment.
         log.info("airflow is not configured; treating dag run %s as dead", task_id)
         return True
-    return _airflow_finished(task_id)
+    return _airflow_finished(task_id, dag_id_for_job(job.type))
 
 
 def recover_interrupted_runs(db) -> dict:

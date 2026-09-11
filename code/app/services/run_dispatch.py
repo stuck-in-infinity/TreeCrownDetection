@@ -21,6 +21,11 @@ from app.core.settings import settings
 from app.services.airflow_client import airflow_enabled, trigger_dag
 
 
+def dag_id_for_job(job_type: str) -> str:
+    """The DAG id this job type is dispatched to, from TCP_*_DAG_ID in .env."""
+    return settings.finalize_dag_id if job_type == "finalize" else settings.analyze_dag_id
+
+
 def _conf(project_id: str, job_id: str, run: int | None = None) -> dict:
     conf = {"project_id": project_id, "job_id": job_id}
     if run is not None:
@@ -48,11 +53,11 @@ def _run_local(task_name: str, project_id: str, job_id: str, run: int | None = N
 
 def dispatch_analyze(project_id: str, job_id: str, run: int | None = None) -> str:
     if airflow_enabled():
-        return trigger_dag(settings.analyze_dag_id, _conf(project_id, job_id, run))
+        return trigger_dag(dag_id_for_job("analyze"), _conf(project_id, job_id, run))
     return _run_local("job_a_analyze", project_id, job_id, run)
 
 
 def dispatch_finalize(project_id: str, job_id: str, run: int | None = None) -> str:
     if airflow_enabled():
-        return trigger_dag(settings.finalize_dag_id, _conf(project_id, job_id, run))
+        return trigger_dag(dag_id_for_job("finalize"), _conf(project_id, job_id, run))
     return _run_local("job_b_finalize", project_id, job_id, run)

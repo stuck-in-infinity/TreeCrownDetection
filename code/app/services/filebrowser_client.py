@@ -115,7 +115,7 @@ def run_share_url(share_hash: str, run: int) -> str:
     needs no extra share, no extra API call, and no new failure mode when
     FileBrowser is down — it is built from the hash already on the project row.
 
-    ⚠ Confirm once against your FileBrowser before relying on it: open a run
+    Confirm once against your FileBrowser before relying on it: open a run
     link and check it lands inside that folder rather than at the share root.
     If your build rejects the subpath, the fallback is a share per run folder,
     stored as a hash on the run row — one more round-trip per run.

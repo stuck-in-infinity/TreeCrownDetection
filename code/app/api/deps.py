@@ -6,9 +6,20 @@ from app.db import models
 from app.db.session import get_db
 
 
+def service_caller(
+    x_service_token: str | None = Header(default=None),
+) -> bool:
+    """True when the caller is the orchestrator rather than a browser."""
+    # Airflow has no signed-in email to send, so I let its service token stand
+    # in for identity. Gated on compute_token being set, or every anonymous
+    # request would pass as the system.
+    return bool(settings.compute_token) and x_service_token == settings.compute_token
+
+
 def require_api_key(
     x_api_key: str | None = Header(default=None),
     x_user_email: str | None = Header(default=None, alias="X-User-Email"),
+    service: bool = Depends(service_caller),
 ) -> str:
     """Check who is calling a user-facing endpoint.
 
@@ -22,6 +33,9 @@ def require_api_key(
     ``require_user``, and only exists under its own name so the call sites that
     use it do not have to change.
     """
+    # The orchestrator carries neither header; its token already vouched for it.
+    if service:
+        return x_user_email or "system"
     if settings.api_key and x_api_key != settings.api_key:
         raise HTTPException(
             status_code=401,
@@ -39,6 +53,7 @@ def require_user(
     x_user_email: str | None = Header(default=None, alias="X-User-Email"),
     x_user_id: str | None = Header(default=None, alias="X-User-Id"),
     user: str | None = Query(default=None),
+    service: bool = Depends(service_caller),
 ) -> str:
     """Read the user's identity from the headers the frontend sets.
 
@@ -63,6 +78,9 @@ def require_user(
     user's projects from another's.
     """
     email = x_user_email or user
+    # Same for the orchestrator here: no sign-in to require of it.
+    if service:
+        return email or "system"
     if not settings.auth_enabled:
         return email or "default"
     if not email:
@@ -93,6 +111,7 @@ def resolve_project(
     db: Session,
     user: str,
     project_id: str | None = None,
+    service: bool = False,
 ) -> models.Project:
     if project_id is None:
         project = (
@@ -115,7 +134,7 @@ def resolve_project(
             detail={"code": "PROJECT_NOT_FOUND", "message": "Project not found",
                     "project_id": project_id},
         )
-    if project.user_id != user:
+    if not service and project.user_id != user:
         raise HTTPException(
             status_code=403,
             detail={"code": "FORBIDDEN", "message": "Forbidden", "project_id": project_id},
@@ -127,5 +146,10 @@ def get_project(
     project_id: str | None = None,
     db: Session = Depends(get_db),
     user: str = Depends(require_user),
-) -> models.Project:
-    return resolve_project(db, user, project_id)
+    service: bool = Depends(service_caller),
+) -> models.Project | None:
+    # Airflow owns no projects, so there is no "newest of mine" to fall back on.
+    # I hand back None and let the endpoint resolve from body.project_id.
+    if service and project_id is None:
+        return None
+    return resolve_project(db, user, project_id, service=service)

@@ -12,7 +12,13 @@ CONFLICT_BUSY.
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_project, require_api_key, require_service_token, resolve_project
+from app.api.deps import (
+    get_project,
+    require_api_key,
+    require_service_token,
+    resolve_project,
+    service_caller,
+)
 from app.api.v1.clustering import build_clustering_payload
 from app.api.v1.runs import (
     _apply_run_config,
@@ -67,6 +73,7 @@ def drone_api(
     db: Session = Depends(get_db),
     user: str = Depends(require_api_key),
     _svc: str = Depends(require_service_token),
+    service: bool = Depends(service_caller),
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ):
     if not body or not body.project_id or not body.action:
@@ -109,7 +116,7 @@ def drone_api(
         # every conf key through while a value on the project is always read.
         # It also goes into conf, so a DAG that ignores the key still works.
         if body.action == "analyze":
-            project = resolve_project(db, user, body.project_id)
+            project = resolve_project(db, user, body.project_id, service=service)
             selected = resolve_run_ortho(project, body)
             conf["ortho_id"] = selected.id
             _pin_run_ortho(project, selected)
@@ -134,11 +141,11 @@ def drone_api(
         }
 
     # With no Airflow configured, run the pipeline here instead.
-    project = resolve_project(db, user, body.project_id)
+    project = resolve_project(db, user, body.project_id, service=service)
     if body.action == "finalize":
         from app.api.v1.finalize import run_finalize
-        return run_finalize(request, body, project, db, user, idempotency_key)
-    return run_analyze(request, body, project, db, user, idempotency_key)
+        return run_finalize(request, body, project, db, user, idempotency_key, service=service)
+    return run_analyze(request, body, project, db, user, idempotency_key, service=service)
 
 
 @router.get("/project/drone_status/{dag_run_id}")
@@ -150,6 +157,7 @@ def drone_status(
     db: Session = Depends(get_db),
     user: str = Depends(require_api_key),
     _svc: str = Depends(require_service_token),
+    service: bool = Depends(service_caller),
 ):
     try:
         state = get_dag_run_state(dag_run_id)
@@ -162,7 +170,7 @@ def drone_status(
 
     if state == "success":
         db.expire_all()
-        project = resolve_project(db, user, project_id)
+        project = resolve_project(db, user, project_id, service=service)
         if action == "analyze":
             payload = _analyze_payload(request, project)
         else:
@@ -191,9 +199,10 @@ def start_analyze(
     db: Session = Depends(get_db),
     user: str = Depends(require_api_key),
     _svc: str = Depends(require_service_token),
+    service: bool = Depends(service_caller),
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ):
-    return run_analyze(request, body, project, db, user, idempotency_key)
+    return run_analyze(request, body, project, db, user, idempotency_key, service=service)
 
 
 def run_analyze(
@@ -203,6 +212,7 @@ def run_analyze(
     db: Session,
     user: str,
     idempotency_key: str | None = None,
+    service: bool = False,
 ):
     path_project_id = request.path_params.get("project_id")
     if not path_project_id and not (body and body.project_id):
@@ -213,7 +223,7 @@ def run_analyze(
             "project_id": None,
         })
     if body and body.project_id:
-        project = resolve_project(db, user, body.project_id)
+        project = resolve_project(db, user, body.project_id, service=service)
 
     _validate_trigger_body(project, body)
     # If this key's run already succeeded, return that result rather than

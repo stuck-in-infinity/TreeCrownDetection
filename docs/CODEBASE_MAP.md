@@ -146,8 +146,10 @@ legacy singular `/project/…` (project resolved from header/query by
 `require_api_key` (X-API-Key + optional X-User-Email), `require_user`
 (Google GIS headers, **unverified** — audit only, must sit behind a gateway,
 with a `?user=` query fallback for browser-issued GETs — invariant 16),
-`require_service_token` (X-Service-Token, Airflow), `resolve_project`,
-`get_project`.
+`require_service_token` (X-Service-Token, Airflow), `service_caller`
+(X-Service-Token matched against a **configured** `compute_token` — the system
+principal, invariant 19), `resolve_project` (`service=True` skips the ownership
+403), `get_project`.
 
 ---
 
@@ -356,6 +358,21 @@ that actually explained failures.
     they must not diverge again. The link (not a copy) is safe because uploads
     always land on a fresh name via `_unique_stem`, so no library file is ever
     rewritten in place.
+19. The orchestrator is a **system principal**, not a user. Projects are owned
+    by the signed-in email, but Airflow sends no `X-User-Email` — its callbacks
+    carry `X-Service-Token` only. So every STACD-style endpoint
+    (`/project/drone_api`, `/project/drone_status`, `/project/analyze`,
+    `/project/finalize`, `/project/runs/*`) threads `service_caller` into
+    `resolve_project(service=…)` to skip the ownership check. Without it the
+    callback resolves as `default`, mismatches the owner and the DAG dies on
+    **403 FORBIDDEN** — which is what happens in production, where sign-in is
+    on, and not in dev, where projects are owned by `default` anyway.
+    `service_caller` is False unless `compute_token` is set, so an unset token
+    cannot promote an anonymous request to a system one; that makes
+    `TCP_COMPUTE_TOKEN` (and a matching `DRONE_SERVICE_TOKEN` on the worker)
+    required on any deployment with real users. `compute.py` never needed this
+    — it authenticates on the token and looks the project up with a bare
+    `db.get`, so there is no ownership check to fail.
 
 ---
 

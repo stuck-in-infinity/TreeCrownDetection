@@ -68,3 +68,5 @@ code/scripts/make_summary_md.py
 code/scripts/make_tile_compare_fig.py
 code/scripts/tune_detection.py
 docs/FINAL_census_vs_model1.pptx
+docker-compose.gpu-cdi.yml
+airflow_stacd

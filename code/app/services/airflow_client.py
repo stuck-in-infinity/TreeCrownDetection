@@ -71,10 +71,14 @@ def trigger_drone_dag(conf: dict, timeout: int = 30) -> str:
     return trigger_dag(settings.drone_dag_id, conf, timeout=timeout)
 
 
-def get_dag_run_state(dag_run_id: str, timeout: int = 10) -> str:
-    """Return a DAG run's state: queued, running, success or failed."""
+def get_dag_run_state(dag_run_id: str, dag_id: str | None = None, timeout: int = 10) -> str:
+    """Return a DAG run's state: queued, running, success or failed.
+
+    ``dag_id`` must name the DAG the run was started under. It defaults to the
+    combined drone DAG, which is what ``trigger_drone_dag`` uses.
+    """
     base = settings.airflow_base_url.rstrip("/")
-    dag_id = settings.drone_dag_id
+    dag_id = dag_id or settings.drone_dag_id
     url = f"{base}/api/v1/dags/{dag_id}/dagRuns/{dag_run_id}"
 
     headers = {"Content-Type": "application/json", **_auth_header()}

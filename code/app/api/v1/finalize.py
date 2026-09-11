@@ -9,7 +9,13 @@ of a running one is rejected.
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_project, require_api_key, require_service_token, resolve_project
+from app.api.deps import (
+    get_project,
+    require_api_key,
+    require_service_token,
+    resolve_project,
+    service_caller,
+)
 from app.api.v1.results import build_results_payload
 from app.api.v1.runs import _current_request_id
 from app.core.logging import get_logger
@@ -36,9 +42,10 @@ def start_finalize(
     db: Session = Depends(get_db),
     user: str = Depends(require_api_key),
     _svc: str = Depends(require_service_token),
+    service: bool = Depends(service_caller),
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ):
-    return run_finalize(request, body, project, db, user, idempotency_key)
+    return run_finalize(request, body, project, db, user, idempotency_key, service=service)
 
 
 def run_finalize(
@@ -48,6 +55,7 @@ def run_finalize(
     db: Session,
     user: str,
     idempotency_key: str | None = None,
+    service: bool = False,
 ):
     path_project_id = request.path_params.get("project_id")
     if not path_project_id and not (body and body.project_id):
@@ -58,7 +66,7 @@ def run_finalize(
             "project_id": None,
         })
     if body and body.project_id:
-        project = resolve_project(db, user, body.project_id)
+        project = resolve_project(db, user, body.project_id, service=service)
 
     key = job_claim.compute_key(idempotency_key)
     prior = job_claim.find_prior(db, project, key)

@@ -49,7 +49,7 @@ def step0_detection(config):
     shutil.copy(config.ORTHO_PATH, os.path.join(ortho_dir, "image.tif"))
     shutil.copy(geojson_path, os.path.join(poly_dir, "crowns.geojson"))
 
-    print("✅ Step 0 complete")
+    print("Step 0 complete")
 
 # Step 1: crop the crowns and cluster them.
 
@@ -71,15 +71,15 @@ def step1_clustering(config):
     step1_analyze_k(config, inertia_vals, silhouette_vals, db_vals, dir_cluster)
     step1_tsne(config, X, names_df, all_cluster_labels, dir_cluster)
 
-    print("\n✅ Step 1 complete")
+    print("\nStep 1 complete")
 
-    print("\n🔴 IMPORTANT NEXT STEP:")
-    print("👉 Open this folder:")
+    print("\nIMPORTANT NEXT STEP:")
+    print("Open this folder:")
     print(f"{config.STEP1_OUTPUT}/clustering/")
-    print("\n👉 Choose best k from plots")
-    print("👉 Open: k{K}_cluster_species_map.csv")
-    print("👉 Fill species column")
-    print("👉 Then update CHOSEN_K in config.py")
+    print("\nChoose best k from plots")
+    print("Open: k{K}_cluster_species_map.csv")
+    print("Fill species column")
+    print("Then update CHOSEN_K in config.py")
 
 
 
@@ -91,7 +91,7 @@ def step2_species(config):
 
     step2_assign_species(config)
 
-    print("✅ Step 2 complete")
+    print("Step 2 complete")
 
 
 # Step 3: validate against ground truth.
@@ -113,7 +113,7 @@ def step4_kmz(config):
 
     step4_export_kmz(config)
 
-    print("✅ Step 4 complete")
+    print("Step 4 complete")
 
 
 # Command-line entry point.
