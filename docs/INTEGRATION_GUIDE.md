@@ -56,7 +56,7 @@ Compute is optionally orchestrated via **Apache Airflow**. When Airflow is not c
                ▼
 ┌─────────────────────────────────────────────────────────┐
 │               Apache Airflow (external)                  │
-│         http://corestac-stacd-airflow:8080               │
+│         http://<airflow-host>:8080                       │
 │                                                          │
 │   DAG: drone_pipeline                                    │
 │     └─► Drone_Algo task                                  │
@@ -227,9 +227,9 @@ Not committed to git. Must be created manually on each machine:
 
 ```bash
 # Required for Airflow integration
-TCP_AIRFLOW_BASE_URL=http://corestac-stacd-airflow:8080
-TCP_AIRFLOW_USERNAME=admin
-TCP_AIRFLOW_PASSWORD=admin
+TCP_AIRFLOW_BASE_URL=http://<airflow-host>:8080
+TCP_AIRFLOW_USERNAME=<airflow-user>
+TCP_AIRFLOW_PASSWORD=<airflow-password>
 TCP_DRONE_DAG_ID=drone_pipeline
 
 # Storage
@@ -569,9 +569,9 @@ docker compose up -d --build
 ```bash
 # 1. Set Airflow env vars in .env
 cat >> .env << 'EOF'
-TCP_AIRFLOW_BASE_URL=http://corestac-stacd-airflow:8080
-TCP_AIRFLOW_USERNAME=admin
-TCP_AIRFLOW_PASSWORD=admin
+TCP_AIRFLOW_BASE_URL=http://<airflow-host>:8080
+TCP_AIRFLOW_USERNAME=<airflow-user>
+TCP_AIRFLOW_PASSWORD=<airflow-password>
 TCP_DRONE_DAG_ID=drone_pipeline
 EOF
 
@@ -585,7 +585,7 @@ docker exec drone_docker-api-1 env | grep TCP_AIRFLOW
 # 4. Check backend can reach Airflow
 docker exec drone_docker-api-1 curl -s \
   -u admin:admin \
-  http://corestac-stacd-airflow:8080/api/v1/dags \
+  http://<airflow-host>:8080/api/v1/dags \
   | python3 -m json.tool | head -20
 
 # 5. Verify new code is inside container
@@ -621,7 +621,7 @@ And the DAG's callback request **must include `execution_id`** to prevent the ci
 docker exec drone_docker-api-1 env | grep TCP_AIRFLOW_BASE_URL
 
 # Should print:
-# TCP_AIRFLOW_BASE_URL=http://corestac-stacd-airflow:8080
+# TCP_AIRFLOW_BASE_URL=http://<airflow-host>:8080
 # If empty → check .env file, restart container
 docker compose -f docker-compose.hub.yml restart api
 ```

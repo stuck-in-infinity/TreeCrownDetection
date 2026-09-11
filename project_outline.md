@@ -59,8 +59,8 @@ The backend connects to Airflow using environment variables in `.env`:
 
 ```
 TCP_AIRFLOW_BASE_URL  →  URL of Airflow (internal Docker hostname)
-TCP_AIRFLOW_USERNAME  →  admin
-TCP_AIRFLOW_PASSWORD  →  admin
+TCP_AIRFLOW_USERNAME  →  your Airflow user
+TCP_AIRFLOW_PASSWORD  →  that user's password
 TCP_DRONE_DAG_ID      →  drone_pipeline
 ```
 
@@ -299,13 +299,13 @@ sequenceDiagram
     F->>B: POST /api/v1/projects
     B->>B: Generate project_id (UUID)
     B->>FB: POST /api/share/{project_id}
-    FB-->>B: {"hash": "fNqIKDS3"}
+    FB-->>B: {"hash": "AbC123xy"}
     Note over B: Store hash in DB with project
-    B-->>F: {project_id, share_hash:"fNqIKDS3"}
+    B-->>F: {project_id, share_hash:"AbC123xy"}
 
     Note over F,FB: ...pipeline runs, finalize completes...
 
-    B-->>F: {state:"success", files_url:"http://filebrowser/share/fNqIKDS3"}
+    B-->>F: {state:"success", files_url:"http://filebrowser/share/AbC123xy"}
     Note over F: "Browse all output files →" link shown to user
 ```
 

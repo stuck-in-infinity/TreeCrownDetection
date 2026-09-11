@@ -72,7 +72,7 @@ Other settings worth knowing (all documented inline in `.env.example`):
 | Setting | Meaning |
 |---|---|
 | `TCP_API_PORT`, `TCP_FRONTEND_PORT` | Host ports. Honoured by `docker-compose.yml` only — the hub file hardcodes 8123/8200. |
-| `TCP_AUTH_ENABLED` | `true` requires an identity on every call — the `X-User-Email` header, or `?user=` for the URLs the browser fetches by itself (§5). Leave `false` for local use. |
+| `TCP_AUTH_ENABLED` | `true` requires a signed-in identity on every call (§5). Leave `false` for local use. |
 | `TCP_THUMBS_PER_CLUSTER` | Crowns per cluster given a thumbnail during analysis (default 5). `0` renders them on demand instead. |
 | `TCP_AIRFLOW_BASE_URL` | Blank runs the pipeline in this process. **`.env.example` ships this set, so a fresh copy has Airflow ON** — blank it unless you have read §6. |
 | `TCP_ANALYZE_DAG_ID`, `TCP_FINALIZE_DAG_ID`, `TCP_DRONE_DAG_ID` | Which DAG each trigger starts (§6b). |
@@ -102,8 +102,8 @@ put the UI and `/api/` behind one reverse proxy. For a plain
 - another machine on the LAN → `http://<host-ip>:8123` (not `localhost`, which
   would mean the viewer's own computer)
 
-Leave `GOOGLE_CLIENT_ID` at its placeholder to skip sign-in during setup — the
-gate bypasses itself, so the pipeline stays usable.
+Leave `GOOGLE_CLIENT_ID` at its placeholder only on a local development machine;
+set a real client id before anyone else uses the deployment (§5).
 
 ---
 
@@ -224,27 +224,24 @@ After Finalize: KMZ and CSV downloads, the distribution summary, and the
 
 ---
 
-## 5. Google sign-in (SSO, audit-only)
+## 5. Google sign-in (SSO)
 
-Client-side Google Identity Services (GIS) token flow. The frontend gets the
-user's email and sends it as `X-User-Email`; the backend logs **who triggered
-what** and scopes projects per user. The token is **not** verified server-side
-(audit-only) — safe only **behind a gateway / internal network**.
+Client-side Google Identity Services (GIS) token flow. The frontend signs the
+user in and sends their identity with every API call; the backend records **who
+triggered what** and scopes projects per user.
 
 Setup:
 1. Google Cloud Console → **OAuth Client ID** (type: Web application).
    **Authorized JavaScript origins** = your site origin (scheme+host, **no path**),
-   e.g. `https://www.cse.iitd.ernet.in`. Leave **redirect URIs** empty.
+   e.g. `https://your-site.example`. Leave **redirect URIs** empty.
 2. Configure the OAuth consent screen (Internal if Workspace-only).
 3. Put the client ID in `frontend/config.js`.
-4. Set `TCP_AUTH_ENABLED=true` and restart. (Set both together — client id alone
-   gates the UI but not the API; `auth_enabled` alone 401s every call.)
+4. Set `TCP_AUTH_ENABLED=true` and restart. Set both together — sign-in is only
+   complete when the client id and `TCP_AUTH_ENABLED` are both configured.
 
-With the placeholder client id, the gate auto-bypasses so dev stays usable.
-Deploy behind HTTPS + a same-origin reverse proxy (UI + `/api/`) to avoid CORS.
-For a public-facing API, switch to server-side token verification: the backend
-already carries `TCP_GOOGLE_CLIENT_ID` for it, and the frontend already holds
-the ID token — what is missing is the verification step in `code/app/api/deps.py`.
+Deploy behind HTTPS and a same-origin reverse proxy (UI + `/api/`), which also
+avoids CORS, and keep the API port (`8123`) on the internal network rather than
+exposing it directly.
 
 ---
 
@@ -542,64 +539,7 @@ beat cleanup is OFF (`cleanup_enabled=false`).
 
 ---
 
-## 10. Logging & audit (IST)
-
-- Central: `/data/logs/app.log` (all levels) + `/data/logs/errors.jsonl`
-  (ERROR-only, JSON) — **outside** `storage_root` so retention can't erase them.
-- Per-run pipeline logs: `data/storage/projects/<id>/work/run_<n>/logs/*.log`
-  (include the failure traceback).
-- Audit ledger: `data/storage/activity/activity-YYYY-MM-DD.jsonl` — who/when per
-  request. It records **every write** (POST/PUT/PATCH/DELETE) and the **reads
-  that hand data back**: the results summary, the KMZ, both CSVs, the confusion
-  matrix, the STAC item, `runs/<n>/results/<asset>`, the clustering data and its
-  k-selection and t-SNE plots, individual crown images and the detection
-  overlay. Ordinary polling is deliberately left out — the review screen asks
-  `/project` and `/project/runs/status` every three seconds for the length of a
-  run, and logging that would bury the records that matter.
-- Every error record carries `request_id`, `user_email`, `project_id`,
-  `dag_run_id`, stage, and IST timestamps, so an auditor can trace who ran what,
-  when it started/failed, and why. `user_email` is bound by the request
-  middleware and, for the two pipeline jobs, from the project's owner — so a run
-  that fails deep inside the pipeline still names whose run it was.
-
-**Identity on downloads and images.** A download link and a crown image are
-fetched by the browser itself, through `<a href>` and `<img src>`, which send no
-custom headers — so those URLs carry `?user=<email>` instead of `X-User-Email`.
-The logging and the ledger accept either, which is what keeps audited reads from
-all showing up as `anonymous`. Neither is verified here; the identity is only as
-trustworthy as the gateway or network in front of the API.
-
-**Docker logs.** Both compose files cap container stdout at three 10 MB files
-per service (`json-file`, `max-size: 10m`, `max-file: 3`), so an unattended
-deployment cannot fill the disk with logs. nginx access and error logs are
-written to `./data/logs/nginx/` on the host as well as to stdout, so replacing
-the frontend container does not lose them.
-
-Those two nginx files are the one log in the stack nothing rotates: `app.log`
-and `errors.jsonl` rotate in Python, container stdout rotates in Docker, but
-nginx writes plain files and the image has no logrotate. On a busy deployment,
-give the host one:
-
-```
-# /etc/logrotate.d/treecrown-nginx   (adjust the path to your checkout)
-/path/to/drone_docker/data/logs/nginx/*.log {
-    weekly
-    rotate 8
-    compress
-    missingok
-    notifempty
-    copytruncate
-}
-```
-
-`copytruncate` avoids having to signal nginx inside the container.
-
-**Timezone:** all **logs** render in **IST**. DB timestamps are also stored in
-IST (`naive_now()`), and retention compares IST-vs-IST → no drift.
-
----
-
-## 11. Manage
+## 10. Manage
 
 ```
 Logs:          docker compose -f docker-compose.hub.yml logs -f api
@@ -625,7 +565,7 @@ and the live contents sit in `treecrown.db-wal`. **Copy all three of
 
 ---
 
-## 12. Troubleshooting
+## 11. Troubleshooting
 
 **Startup**
 
@@ -649,7 +589,7 @@ and the live contents sit in `treecrown.db-wal`. **Copy all three of
   URL it tried.
 - **Mixed content blocked** → the page is on HTTPS and `API_BASE` is HTTP.
   Browsers refuse this. Put both behind the same HTTPS origin.
-- **API 401 everywhere** → `TCP_AUTH_ENABLED=true` but no `X-User-Email` is
+- **API 401 everywhere** → `TCP_AUTH_ENABLED=true` but no signed-in identity is
   being sent (client id not set, or a non-browser client). Set the client id, or
   turn auth off for local use.
 - **Sign-in popup rejected** → the browser origin is not in the OAuth client's
@@ -698,16 +638,13 @@ and the live contents sit in `treecrown.db-wal`. **Copy all three of
 
 **Where to look**
 
-`docker compose logs -f api`, then `data/logs/app.log` and
-`data/logs/errors.jsonl`, then the per-run log under
-`data/storage/projects/<id>/work/run_<n>/logs/`. Every error carries a
-`request_id` that ties the three together.
+`docker compose logs -f api` first, then the log files under `TCP_LOG_DIR` and
+the run's own `logs/` folder. Every error carries a `request_id` that ties them
+together.
 
 ---
 
 ## Docs
-- `docs/CODEBASE_MAP.md` — where to find things in the code. Read this first
-  before going looking.
 - `docs/INTEGRATION_GUIDE.md` — architecture and the Airflow integration.
 - `docs/FRONTEND_BACKEND_FLOW.md` — what the UI calls, in order.
 - `docs/PIPELINE_WALKTHROUGH.md` — the pipeline end to end.
@@ -716,4 +653,4 @@ and the live contents sit in `treecrown.db-wal`. **Copy all three of
   pull-and-run sheet. §1–§3 here supersede both; `publish.sh` is what builds and
   pushes the images.
 - `project_outline.md` — architecture with diagrams.
-- `DB_SCHEMA.md` — tables and columns.
+- `version_1.0.md`, `version_1.2.md` — release changelogs.

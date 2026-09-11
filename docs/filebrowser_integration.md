@@ -31,14 +31,14 @@ TOKEN=$(curl -s -X POST http://localhost:8097/api/login \
   -d '{"username": "admin", "password": "..."}' )
 
 # 2. Create share for a project folder
-curl -X POST http://localhost:8097/api/share/4b034ba1-0309-4a7e-b10b-941b4816ebc8 \
+curl -X POST http://localhost:8097/api/share/<project_id> \
   -H "X-Auth: $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{}'
-# Response: {"hash":"fNqIKDS3","path":"/4b034ba1-...","userID":1,"expire":0}
+# Response: {"hash":"AbC123xy","path":"/4b034ba1-...","userID":1,"expire":0}
 
 # 3. Public share URL (no login needed)
-# http://localhost:8097/share/fNqIKDS3
+# http://localhost:8097/share/AbC123xy
 ```
 
 `"expire": 0` means the link never expires.
@@ -88,7 +88,7 @@ def create_project_share(project_id: str) -> str:
     )
     with urllib.request.urlopen(req) as r:
         data = json.loads(r.read())
-    return data["hash"]  # e.g. "fNqIKDS3"
+    return data["hash"]  # e.g. "AbC123xy"
 ```
 
 ### 3. Call it at project creation time
@@ -143,12 +143,12 @@ sequenceDiagram
     F->>B: POST /api/v1/projects
     B->>B: Generate project_id (UUID)
     B->>FB: POST /api/share/{project_id}
-    FB-->>B: {"hash": "fNqIKDS3"}
+    FB-->>B: {"hash": "AbC123xy"}
     Note over B: Store hash in project DB row
-    B-->>F: {project_id, share_hash:"fNqIKDS3"}
+    B-->>F: {project_id, share_hash:"AbC123xy"}
 
     Note over F,FB: After finalize pipeline completes
-    B-->>F: {state:"success", files_url:"http://filebrowser/share/fNqIKDS3"}
+    B-->>F: {state:"success", files_url:"http://filebrowser/share/AbC123xy"}
     Note over F: User clicks link → browses all output files (no login)
 ```
 

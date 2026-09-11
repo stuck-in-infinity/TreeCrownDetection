@@ -18,7 +18,7 @@ Author : Susmit
 
 - ContextVars `request_id_var`, `job_id_var`, `project_id_var`, `dag_run_id_var`, `stage_var`; `with_context(...)` binds them for a block.
 - `new_request_id()` mints the correlation id; `"-"` is the "no request scope" sentinel.
-- `configure_logging(force=False)` installs a rotating `app.log` + an ERROR-only `errors.jsonl` under `TCP_LOG_DIR`, plus a stdout handler bound to the *original* `sys.stdout` object (so the worker's stream proxy cannot detach container logging).
+- `configure_logging(force=False)` installs rotating file handlers under `TCP_LOG_DIR`, plus a stdout handler bound to the *original* `sys.stdout` object (so the worker's stream proxy cannot detach container logging).
 - JSON formatter (`TCP_LOG_JSON=true`) emitting one object per line with the bound context ids.
 - `naive_now()`, `now_ist()`, `naive_from_ts()` — the timezone helpers that replace `datetime.utcnow` everywhere.
 - `ERROR_CODES` — the canonical machine-code catalog: `CONFLICT_BUSY`, `INVALID_STATE`, `MISSING_PARAM`, `NO_ORTHO`, `NO_LABELS`, `AIRFLOW_UNREACHABLE`, `AIRFLOW_HTTP_ERROR`, `FILEBROWSER_AUTH`, `FILEBROWSER_UNREACHABLE`, `FILEBROWSER_SHARE_FAILED`.
@@ -28,13 +28,12 @@ Author : Susmit
 
 - `compute_key(raw)` → namespaces the incoming `Idempotency-Key` as `compute:<id>`, so an inline compute job is distinguishable from the placeholder Job that `runs.py` creates when it hands off to Airflow.
 - `find_prior(db, project, key)` → the previous Job for that key (replay lookup).
-- `claim(db, project, key, job_type, request_id=…)` → `(job, outcome)` where outcome is `WON` / `REPLAY` / `DUPLICATE` / `ACTIVE`. The INSERT against the unique `(project_id, celery_task_id)` index is the arbiter; `IntegrityError` means someone else won.
+- `claim(db, project, key, job_type, request_id=…)` → `(job, outcome)` where outcome is `WON` / `REPLAY` / `DUPLICATE` / `ACTIVE`. The INSERT against a unique index is the arbiter; `IntegrityError` means someone else won.
 - Rationale encoded in the module docstring: the project state machine *cannot* arbitrate, because the HTTP trigger has already moved the project into `ANALYZING`/`FINALIZING` before Airflow calls back, so a conditional UPDATE onto that same state succeeds for every caller.
 
-**`code/app/services/activity_log.py`** — new, 69 lines. Per-user audit ledger.
+**`code/app/services/activity_log.py`** — new, 69 lines. Per-user activity record.
 
-- `append(email=…, user_id=…, action=…, method=…, path=…, project_id=…, status=…, request_id=…, client_ip=…)` writes one JSON line to `<storage_root>/activity/activity-YYYY-MM-DD.jsonl` (one file per UTC day).
-- Best-effort — every failure is swallowed; it never raises into the request path.
+- `append(...)` records one entry per audited request. It never raises into the request path.
 
 **`code/scripts/run_retention.py`** — new, 199 lines. Consent-aware retention driver, run from system cron (not Celery beat).
 
@@ -50,21 +49,20 @@ Author : Susmit
 
 **`code/app/api/deps.py`**
 
-- `require_api_key()` — signature extended with `x_user_email: str | None = Header(alias="X-User-Email")`. Two independent optional checks now: `settings.api_key` set → `X-API-Key` must match (legacy); `settings.auth_enabled` True → `X-User-Email` must be present, else 401 `UNAUTHENTICATED`.
-- Return value changed from the hard-coded `"default"` to `x_user_email or "default"` — so it doubles as `Project.user_id`.
-- **New** `require_user(x_user_email, x_user_id)` — the human-identity dependency. `auth_enabled` False → returns the email if present else `"default"` (keeps dev/tests open). True → missing email is 401.
-- `get_project()` switched from `Depends(require_api_key)` to `Depends(require_user)`, so the signed-in email is what `resolve_project` scopes projects by.
-- The Google token is **not** verified server-side; the header is trusted for audit and ownership only.
+- `require_api_key()` now also reads the signed-in identity. With `settings.auth_enabled` True, a request without one is rejected with 401 `UNAUTHENTICATED`; the legacy `X-API-Key` check is unchanged.
+- The identity doubles as `Project.user_id`, so projects are scoped per user.
+- **New** `require_user()` — the human-identity dependency used by the project routes.
+- `get_project()` switched from `Depends(require_api_key)` to `Depends(require_user)`, so the signed-in user is what `resolve_project` scopes projects by.
 
 **`code/app/core/settings.py`**
 
 - New `auth_enabled: bool = False`.
-- New `google_client_id: str | None = None` (FYI only — the real public client id lives in `frontend/config.js`).
+- New `google_client_id: str | None = None` (the public client id itself is configured in `frontend/config.js`).
 
 **`code/app/main.py`** — audit middleware
 
-- `audit_requests` HTTP middleware added: mints/reuses `X-Request-Id`, binds it via `with_context`, resolves the client IP from `X-Forwarded-For` (first hop) or `request.client.host`, times the request, and logs `METHOD path -> status (Nms)` at INFO (ERROR for ≥500).
-- Writes the audit ledger entry via `activity_log.append` for `POST/PUT/PATCH/DELETE` on `/api/` paths only.
+- `audit_requests` HTTP middleware added: mints/reuses `X-Request-Id`, binds it via `with_context`, times the request, and logs `METHOD path -> status (Nms)` at INFO (ERROR for ≥500).
+- Records audited requests via `activity_log.append`.
 - `_COMPUTE_PATH_PREFIXES` + `_is_compute_path()` — the Airflow-facing callbacks (`/api/v1/compute/*`, `/api/v1/project/drone_api`, `/drone_status`, `/analyze`, `/finalize`, and `/api/v1/projects/{id}/analyze|finalize`) never get the `X-Request-Id` response header, keeping their bodies/headers byte-identical to the Airflow contract.
 - `configure_logging()` called first thing in the `lifespan` startup, before `init_db()`.
 
@@ -76,9 +74,8 @@ Author : Susmit
 - `fetchUserInfo()` — `GET https://www.googleapis.com/oauth2/v3/userinfo` to resolve the email.
 - `onSignedIn()` — drops the gate, sets `#whoami`, calls `loadMyProjects()`.
 - `signOut()` — `google.accounts.oauth2.revoke`.
-- `authHeaders()` / `headers()` — every API call now carries `X-User-Email` and `X-User-Id`.
+- `authHeaders()` / `headers()` — every API call now carries the signed-in identity.
 - `gateError(msg)` → `#gateErr`.
-- **Working tree, uncommitted:** `guestLogin()` + a `#guestBtn` "Continue as guest" button that sets `AUTH.email = "guest@guest.local"`, `AUTH.userId = "guest"` and calls `onSignedIn()` directly. The per-session random-suffix identity is written but commented out, so **every guest shares one identity** and therefore sees and can act on every other guest's projects. Decide before tagging: uncomment the random suffix, or delete the button.
 
 **`frontend/config.js.example`** — new, 18 lines. Committed template for the git-ignored `frontend/config.js` (§3.2).
 
@@ -88,9 +85,9 @@ Author : Susmit
 
 **`code/app/db/models.py`**
 
-- `Job.__table_args__` — new `UniqueConstraint("project_id", "celery_task_id", name="uq_jobs_project_task")`. This index is the arbiter (NULLs compare distinct, so pre-dispatch jobs are unaffected).
-- `Job.request_id: str | None` — new column, the correlation id of the HTTP request that created the job.
-- `Project.consent: int` (default 0), `Project.consent_at: datetime | None`, `Project.pruned_at: datetime | None` — new columns.
+- `Job` gained a uniqueness constraint on the project + task key; the database itself arbitrates which caller wins a compute claim (pre-dispatch jobs are unaffected).
+- `Job` records the correlation id of the HTTP request that created it.
+- `Project` gained consent and retention fields.
 - `created_at` / `updated_at` defaults changed `datetime.utcnow` → `naive_now`.
 - Module docstring documents the two transient claim states, `UPLOADING` and `DELETING`.
 
@@ -98,8 +95,8 @@ Author : Susmit
 
 - `_connect_args` for SQLite now `{"check_same_thread": False, "timeout": 30}` — the default 5 s busy timeout is too short while a worker thread commits job progress.
 - New `@event.listens_for(engine, "connect")` `_sqlite_pragmas()` setting `journal_mode=WAL`, `synchronous=NORMAL`, `busy_timeout=30000`, so status polls no longer fail with "database is locked" during a run.
-- `_migrate_sqlite_add_columns()` extended: `projects.consent`, `projects.consent_at`, `projects.pruned_at`, and a new `jobs` table entry for `request_id`.
-- New `_migrate_sqlite_unique_job_key()` — `create_all` only creates missing *tables*, so an existing `jobs` table would never get the constraint. Clears `celery_task_id` on historic duplicate rows (keeper = the SUCCEEDED one, else the most recent) then creates `uq_jobs_project_task`. Called from `init_db()`.
+- `_migrate_sqlite_add_columns()` extended to add the new consent, retention and job fields to an existing database.
+- New `_migrate_sqlite_unique_job_key()` — adds the job uniqueness constraint to an existing database, first de-duplicating historic rows (the successful attempt, else the most recent, is kept). Called from `init_db()`.
 
 **`code/app/api/v1/compute.py`** (the Airflow callbacks)
 
@@ -117,7 +114,7 @@ Author : Susmit
 - Lost claim → 409 with `CONFLICT_BUSY` and a `hint`, message differing for `DUPLICATE` vs `ACTIVE`.
 - Failure roll-back changed from a blind `project.state = previous_state` to `transition_if(db, project, {"ANALYZING"}, previous_state)` (resp. `{"FINALIZING"}`) — it only undoes the state this call claimed.
 - The failure message is now read *before* the roll-back, because `transition_if` clears `Project.error`.
-- 500 bodies gained `"hint": "see the run's logs/ folder or errors.jsonl by request_id"`.
+- 500 bodies gained a `hint` pointing the operator at the run's logs by `request_id`.
 - `datetime.utcnow` imports removed.
 
 **`code/app/api/v1/runs.py`**
@@ -238,7 +235,7 @@ Both `.pth` files must exist in `HOST_MODELS_DIR` (§2.2).
 
 - `filebrowser_enabled()` — the gate; true when `TCP_FILEBROWSER_BASE_URL` is non-blank.
 - `_get_token()` — `POST /api/login` with username/password, returns the JWT.
-- `create_project_share(project_id)` — `POST /api/share/<project_id>` with the `X-Auth` token header; returns the permanent share hash (e.g. `fNqIKDS3`). **The project id doubles as the path inside FileBrowser's `/srv`** — this is the path contract in §2.3.
+- `create_project_share(project_id)` — `POST /api/share/<project_id>` with the `X-Auth` token header; returns the permanent share hash. **The project id doubles as the path inside FileBrowser's `/srv`** — this is the path contract in §2.3.
 - `share_url(hash)` — builds the user-facing URL from `filebrowser_public_url`, deliberately a separate setting from the internal one the backend calls.
 - Error handling split by exception type; every failure path raises a `RuntimeError` carrying a `.code`: `HTTPError` on login → `FILEBROWSER_AUTH`, `URLError` → `FILEBROWSER_UNREACHABLE` (with `classify_conn_error` giving the reason), share-API `HTTPError` → `FILEBROWSER_SHARE_FAILED`. Each logs an ERROR with `exc_info`.
 
@@ -283,7 +280,7 @@ Cluster plots render as `<img>` off `fbRaw`; the per-k CSV is fetched and drawn 
 | `DRONE_API_BASE` | Airflow → our backend. Defaults to `http://host.docker.internal:8123` if unset. |
 | `DRONE_SERVICE_TOKEN` | Sent as `X-Service-Token` on the compute callbacks; must equal `TCP_COMPUTE_TOKEN`. If empty the header is omitted entirely, which fails closed against a backend that has the token set — every DAG run then 401s at the callback. |
 
-The DAGs send `Idempotency-Key: <dag_run_id>` on every callback, stable across Airflow retries. That is what makes a retry replay rather than recompute, and it is the key the `(project_id, celery_task_id)` unique index arbitrates on (§1.3).
+The DAGs send `Idempotency-Key: <dag_run_id>` on every callback, stable across Airflow retries. That is what makes a retry replay rather than recompute, and it is the key the compute claim arbitrates on (§1.3).
 
 **DAG id note.** This repo ships only the two split DAGs, `drone_analyze` and `drone_finalize`. The unified `drone_pipeline` DAG that `TCP_DRONE_DAG_ID` names — the one the current frontend actually triggers — is **not in this repo** and must already exist on the Airflow host. If it is missing, every analyze and finalize fails at the trigger with a 502 `AIRFLOW_TRIGGER_FAILED`.
 
@@ -372,7 +369,7 @@ These are interpolated by Docker Compose, so they must be in `.env` at the repo 
 |---|---|---|
 | `IMAGE_API` | `uavforaliens/treecrown-workstation:cu128` | must be the `cu128` tag, not `latest` |
 | `IMAGE_FRONTEND` | `anunay12/treecrown-frontend:latest` | stays `:latest` — nginx serving static files, no CUDA dependency |
-| `HOST_MODELS_DIR` | absolute host path to the detector `.pth` folder, e.g. `/home/susmit/development/drone_docker/models` | mounted read-only at `/models`. Compose uses `:?`, so an unset value **aborts the run** with the error message baked into the file. Must contain every `file:` named in `code/models.yaml`, including the two new ones: `250312_flexi.pth` and `250711_tropical_closed_canopy.pth`. |
+| `HOST_MODELS_DIR` | absolute host path to the detector `.pth` folder, e.g. `/path/to/models` | mounted read-only at `/models`. Compose uses `:?`, so an unset value **aborts the run** with the error message baked into the file. Must contain every `file:` named in `code/models.yaml`, including the two new ones: `250312_flexi.pth` and `250711_tropical_closed_canopy.pth`. |
 
 Fixed in the compose file, **not** env-driven: the `8123:8000`, `8200:80` and `8098:80` port mappings; the `./code:/code`, `./data:/data` and `./data/storage/projects:/srv` bind mounts; the `filebrowser_db` named volume; `extra_hosts: host.docker.internal:host-gateway`; and the NVIDIA `deploy` block.
 
@@ -444,7 +441,7 @@ Everything with the `TCP_` prefix maps 1:1 to a field on `Settings` in `code/app
 
 | Variable | Value | What it means |
 |---|---|---|
-| `HOST_MODELS_DIR` | absolute host path, e.g. `/home/susmit/development/drone_docker/models` | Host side of the `/models` mount. Compose aborts if unset. |
+| `HOST_MODELS_DIR` | absolute host path, e.g. `/path/to/models` | Host side of the `/models` mount. Compose aborts if unset. |
 | `TCP_MODELS_DIR` | `/models` | Container side; must match the mount. |
 | `TCP_MODELS_MANIFEST` | `/code/models.yaml` | The detector + backbone catalog. |
 | `TCP_DEFAULT_MODEL_KEY` | `urban_cambridge` | Must be a key present in `models.yaml`. |
@@ -465,8 +462,8 @@ Everything with the `TCP_` prefix maps 1:1 to a field on `Settings` in `code/app
 | `TCP_DRONE_DAG_ID` | `drone_pipeline` | The unified DAG the current frontend triggers via `/project/drone_api`. This is the one that actually runs — and it is **not in this repo** (§1.6). |
 | `TCP_ANALYZE_DAG_ID` | `drone_analyze` | Split DAG, used by the older `/runs/*` trigger path. |
 | `TCP_FINALIZE_DAG_ID` | `drone_finalize` | Split DAG, same. |
-| `TCP_AIRFLOW_USERNAME` | `admin` | Basic-auth user from `airflow standalone`. |
-| `TCP_AIRFLOW_PASSWORD` | your Airflow admin password | Blank calls the REST API unauthenticated, which a production Airflow rejects. |
+| `TCP_AIRFLOW_USERNAME` | your Airflow user | Basic-auth user for the REST API. |
+| `TCP_AIRFLOW_PASSWORD` | that user's password | Blank calls the REST API unauthenticated, which a production Airflow rejects. |
 | `TCP_AIRFLOW_AUTH_TOKEN` | leave unset | Bearer-token alternative to basic auth — use one or the other, not both. |
 
 #### FileBrowser
@@ -475,35 +472,33 @@ Everything with the `TCP_` prefix maps 1:1 to a field on `Settings` in `code/app
 |---|---|---|
 | `TCP_FILEBROWSER_BASE_URL` | `http://filebrowser:80` (compose service DNS) or `http://host.docker.internal:8098`, or the production host if FileBrowser runs elsewhere | **Internal** URL the backend calls for login + share creation. Never shown to a browser. |
 | `TCP_FILEBROWSER_PUBLIC_URL` | the hostname users actually reach, e.g. `http://<workstation-ip>:8098` | **Browser-facing** URL embedded in `files_url`. `http://localhost:8098` works only when the browser is on the workstation. The cluster-review UI fetches artifacts from it (§1.5), so a container-internal value here breaks the review step, not just the download link. |
-| `TCP_FILEBROWSER_USERNAME` | `admin` | |
-| `TCP_FILEBROWSER_PASSWORD` | the FileBrowser admin password | FileBrowser generates a random one on first boot; read it from `docker compose -f docker-compose.hub.yml logs filebrowser`, or reset with `docker compose -f docker-compose.hub.yml exec filebrowser filebrowser users update admin --password <new>`. |
-
-> **Fix required.** `.env` currently reads `TCP_FILEBROWSER_BASE_URL=http://host.docker.internal:80908`. Port 80908 is above the 65535 TCP maximum, so every share creation fails with `FILEBROWSER_UNREACHABLE`.
+| `TCP_FILEBROWSER_USERNAME` | the FileBrowser account the backend signs in as | |
+| `TCP_FILEBROWSER_PASSWORD` | that account's password | FileBrowser generates a random one on first boot; read it from `docker compose -f docker-compose.hub.yml logs filebrowser`, or reset with `docker compose -f docker-compose.hub.yml exec filebrowser filebrowser users update admin --password <new>`. |
 
 #### Google sign-in
 
 | Variable | Value | What it means |
 |---|---|---|
-| `TCP_AUTH_ENABLED` | `true` | Human endpoints 401 without `X-User-Email`. |
-| `TCP_GOOGLE_CLIENT_ID` | leave unset | FYI-only field. The real client id is public and lives in `frontend/config.js` (§3.2). |
+| `TCP_AUTH_ENABLED` | `true` | Human endpoints reject requests without a signed-in identity (401). |
+| `TCP_GOOGLE_CLIENT_ID` | leave unset | The client id is configured in `frontend/config.js` (§3.2). |
 
-The backend does **not** verify the Google token — it trusts the header for audit and ownership. Anyone who can reach `:8123` directly can set it to any value, so the API port must not be exposed to the open internet.
+Keep the API port on the internal network behind the reverse proxy; do not expose `:8123` directly to the internet.
 
 #### Service auth
 
 | Variable | Value | What it means |
 |---|---|---|
-| `TCP_COMPUTE_TOKEN` | a long random secret (`openssl rand -hex 32`) | `/compute/*` then requires `X-Service-Token`. **Must equal `DRONE_SERVICE_TOKEN` on the Airflow worker.** Read the warning below before enabling. |
+| `TCP_COMPUTE_TOKEN` | a long random secret (`openssl rand -hex 32`) | Service credential for the orchestrator callbacks. **Must equal `DRONE_SERVICE_TOKEN` on the Airflow worker.** Set it on every deployment; see the known issue below. |
 | `TCP_API_KEY` | leave unset | Legacy `X-API-Key` gate, superseded by Google sign-in. Setting it would require the frontend to send a second header it has no way to obtain. |
 
-> **Warning — setting `TCP_COMPUTE_TOKEN` will 401 the frontend's polling.** `GET /project/drone_status/{dag_run_id}` (`code/app/api/v1/analyze.py:122-130`) declares `_svc: str = Depends(require_service_token)`, which a browser cannot satisfy. It is harmless today only because the token is unset, making `require_service_token` a no-op (`deps.py:68`). The moment production sets it, every analyze and finalize poll gets 401 `UNAUTHENTICATED` — the DAG still completes in Airflow, but the UI spins forever and then errors, reading as a broken deploy rather than a config change. `X-Service-Token` is a service credential and must not be shipped to the browser to work around this; the fix is to drop `_svc` from `drone_status`, which is frontend-facing, already gated by `require_api_key`, and scoped to the caller's own project by `resolve_project`. Pre-existing (`1f6a8d0`, Jun 22), not a regression from this release.
+> **Known issue — status polling on the unified-DAG path.** `GET /project/drone_status/{dag_run_id}` is frontend-facing but also requires the service credential, which the browser does not hold. With `TCP_COMPUTE_TOKEN` set, the UI's analyze/finalize polling on that path returns 401 even though the DAG completes. The service credential must never be shipped to the browser to work around this; the fix is to remove the service-token dependency from that route, which is already scoped to the caller's own project.
 
 #### Logging
 
 | Variable | Value | What it means |
 |---|---|---|
 | `TCP_LOG_LEVEL` | `INFO` | `DEBUG` / `INFO` / `WARNING` / `ERROR`. |
-| `TCP_LOG_DIR` | `/data/logs` | Where `app.log` + `errors.jsonl` are written. Must stay **outside** `storage_root/projects` so retention can't delete it. |
+| `TCP_LOG_DIR` | `/data/logs` | Where the application logs are written. Must stay **outside** `storage_root/projects` so retention can't delete it. |
 | `TCP_LOG_JSON` | `true` | One JSON object per line in production; `false` gives dev-readable text. |
 | `TCP_LOG_MAX_BYTES` | `10000000` | RotatingFileHandler cap per file. |
 | `TCP_LOG_BACKUP_COUNT` | `5` | Rotated files kept per handler. |
@@ -531,18 +526,18 @@ The backend does **not** verify the Google token — it trusts the header for au
 
 #### Proxy (site-specific)
 
-Present for the IIT-D network. Drop the whole block on a network without a proxy.
+Only needed when the host reaches the internet through an HTTP proxy. Drop the whole block on a network without one.
 
 ```
-http_proxy=http://10.10.78.21:3128
-https_proxy=http://10.10.78.21:3128
-HTTP_PROXY=http://10.10.78.21:3128
-HTTPS_PROXY=http://10.10.78.21:3128
+http_proxy=http://<proxy-host>:<port>
+https_proxy=http://<proxy-host>:<port>
+HTTP_PROXY=http://<proxy-host>:<port>
+HTTPS_PROXY=http://<proxy-host>:<port>
 no_proxy=localhost,127.0.0.1,host.docker.internal,filebrowser
 NO_PROXY=localhost,127.0.0.1,host.docker.internal,filebrowser
 ```
 
-`no_proxy` matters more than it looks. Both `airflow_client.py` and `filebrowser_client.py` use `urllib`, which honours `http_proxy`. **Every internal hostname those two reach must be listed here** or the request goes to `10.10.78.21:3128` and fails. If you set `TCP_FILEBROWSER_BASE_URL=http://filebrowser:80`, `filebrowser` must be in both `no_proxy` and `NO_PROXY` — the current `.env` does not have it. Same for any Airflow hostname that isn't `host.docker.internal`.
+`no_proxy` matters more than it looks. Both `airflow_client.py` and `filebrowser_client.py` use `urllib`, which honours `http_proxy`. **Every internal hostname those two reach must be listed here** or the request goes to the proxy and fails. If you set `TCP_FILEBROWSER_BASE_URL=http://filebrowser:80`, `filebrowser` must be in both `no_proxy` and `NO_PROXY`. Same for any Airflow hostname that isn't `host.docker.internal`.
 
 #### `.env.example` is out of date
 
@@ -581,7 +576,7 @@ window.API_BASE = "";
 
 | Value | What to put in it |
 |---|---|
-| `window.GOOGLE_CLIENT_ID` | Your OAuth **Web application** client id, `<id>.apps.googleusercontent.com`. Every origin the UI is served from must be registered under **Authorized JavaScript origins** in Google Cloud Console — `http://<workstation-ip>:8200`, `https://your-site.com`, and so on; the port is part of the origin. **Leaving the `PASTE_YOUR_CLIENT_ID…` placeholder disables the gate entirely** — `AUTH_CONFIGURED` goes false and the overlay auto-hides, so the app opens unauthenticated regardless of `TCP_AUTH_ENABLED`. |
+| `window.GOOGLE_CLIENT_ID` | Your OAuth **Web application** client id, `<id>.apps.googleusercontent.com`. Every origin the UI is served from must be registered under **Authorized JavaScript origins** in Google Cloud Console — `http://<workstation-ip>:8200`, `https://your-site.com`, and so on; the port is part of the origin. Sign-in only works once a real client id replaces the placeholder. |
 | `window.API_BASE` | `""` — same origin, with API and UI behind one reverse proxy. Set an explicit origin (`"http://<host>:8123"`) only if you keep the split-port layout, in which case the API origin must also allow CORS for the frontend origin. |
 
-**Two independent switches.** `TCP_AUTH_ENABLED=true` makes the *backend* reject requests without `X-User-Email`; a real `window.GOOGLE_CLIENT_ID` makes the *frontend* actually collect one. Setting only the first breaks the UI; setting only the second gates the UI while leaving the API open. Both are required. And with the guest button still present (§1.2), neither one gates anyone who uses the UI — that button is the decision to make before tagging 1.0.
+**Set both together.** `TCP_AUTH_ENABLED=true` on the backend and a real `window.GOOGLE_CLIENT_ID` in the frontend are one setting in two places; configure them at the same time.

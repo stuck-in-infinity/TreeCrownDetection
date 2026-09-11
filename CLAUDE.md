@@ -12,6 +12,8 @@ codebase.** It is a navigation index: a "where to look for X" table, a
 file→responsibility map for every module, the on-disk artifact layout, a region
 map of the 1200-line `frontend/index.html`, and the non-obvious invariants.
 Going there first avoids re-grepping structure that is already written down.
+The map is local-only (gitignored, never pushed), as is `docs/internal/`; a
+fresh clone will not have them.
 
 Keep it current: when you move responsibilities between files, add a route area,
 change the storage layout, or land the in-flight work in its §10 snapshot, update

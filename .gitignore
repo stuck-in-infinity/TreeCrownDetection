@@ -70,3 +70,8 @@ code/scripts/tune_detection.py
 docs/FINAL_census_vs_model1.pptx
 docker-compose.gpu-cdi.yml
 airflow_stacd
+# Internal-only docs (log/audit layout, DB schema). Kept on the workstation,
+# never pushed: they map out the system for anyone reading the repo.
+docs/internal/
+docs/CODEBASE_MAP.md
+REVIEW_AND_RESUME_PLAN.md
