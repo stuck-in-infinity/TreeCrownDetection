@@ -2397,19 +2397,15 @@ function requestLogin(){
   AUTH.client.requestAccessToken();   // shows the consent popup
 }
 
-// Continue as a guest. This skips Google sign-in and uses a placeholder
-// identity, so the app still has something to send as X-User-Email and
-// X-User-Id for the audit log and project ownership.
+// Continue as a guest — for testing only. This skips Google sign-in and uses a
+// fixed placeholder identity, so the app still has something to send as
+// X-User-Email and X-User-Id for the audit log and project ownership. Every
+// guest shares this one identity, and therefore sees the same projects.
 function guestLogin(){
-//   gateError("");
-//   const rand = Math.random().toString(36).slice(2, 10);
-//   AUTH.email = "guest-" + rand + "@guest.local";
-//   AUTH.userId = "guest-" + rand;
-//   onSignedIn();
-    gateError("");
-    AUTH.email = "guest@guest.local";
-    AUTH.userId = "guest";
-    onSignedIn();
+  gateError("");
+  AUTH.email = "guest@local.com";
+  AUTH.userId = "guest";
+  onSignedIn();
 }
 
 async function fetchUserInfo(){
@@ -2869,7 +2865,7 @@ function withPid(path){
 // neither can carry the X-User-Email header that api() adds — so the server saw
 // them arrive with no project and no caller, fell back to "the newest project
 // owned by `default`", found none (projects are owned by the signed-in email,
-// or by guest@guest.local) and answered 404 PROJECT_NOT_FOUND. Every plot and
+// or by guest@local.com) and answered 404 PROJECT_NOT_FOUND. Every plot and
 // every thumbnail on the review screen came out as "not available". Naming both
 // in the URL is what makes an image request identical to a JSON one.
 function assetUrl(u){

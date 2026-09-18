@@ -76,7 +76,11 @@ Other settings worth knowing (all documented inline in `.env.example`):
 | `TCP_THUMBS_PER_CLUSTER` | Crowns per cluster given a thumbnail during analysis (default 5). `0` renders them on demand instead. |
 | `TCP_AIRFLOW_BASE_URL` | Blank runs the pipeline in this process. **`.env.example` ships this set, so a fresh copy has Airflow ON** — blank it unless you have read §6. |
 | `TCP_ANALYZE_DAG_ID`, `TCP_FINALIZE_DAG_ID`, `TCP_DRONE_DAG_ID` | Which DAG each trigger starts (§6b). |
+| `TCP_DB_NAME`, `TCP_DB_USER`, `TCP_DB_PASSWORD`, `TCP_DB_HOST`, `TCP_DB_PORT` | Postgres by parts (needs `--profile postgres`); the backend composes the URL and encodes the password. First three names match the other production backend. Ignored when `TCP_DATABASE_URL` is set. |
+| `TCP_DB_FALLBACK_SQLITE` | Come up on SQLite when Postgres is unreachable at boot instead of crash-looping (default on). Serves different data — see §6h. Check `/readyz`. |
+| `TCP_ANALYZE_TIMEOUT_MIN`, `TCP_FINALIZE_TIMEOUT_MIN` | Minutes a run may take (default 10). Each run has its own process which **stops itself** at the limit and is recorded as `RUN_TIMEOUT`. `0`, or `TCP_RUN_TIMEOUT_ENABLED=false`, removes the limit. Read the warning in `.env.example` first — 10 minutes will kill healthy runs on a large survey. |
 | `TCP_COMPUTE_TOKEN` | Shared secret on the `/compute/*` callbacks; must equal `DRONE_SERVICE_TOKEN` on the Airflow worker (§6). |
+| `TCP_TRUST_UNAUTHENTICATED_CALLBACKS` | For an Airflow you do not administer, which therefore cannot send that token. Accepts a callback that names no user as the orchestrator. Unauthenticated access to those routes — only on a private network (§6). |
 | `TCP_FILEBROWSER_*` | Optional output sharing (§7). |
 | `TCP_STARTUP_RECOVERY_ENABLED` | On boot, releases runs a restart killed. Leave `true`. |
 
@@ -161,6 +165,21 @@ what matters is the `"available"` flag on each entry. All `false` means
 
 On first boot the API creates the SQLite database and its tables under `data/`,
 so nothing else needs preparing.
+
+**Postgres** is opt-in and takes three steps:
+
+```bash
+# 1. set TCP_DB_NAME / TCP_DB_USER / TCP_DB_PASSWORD in .env
+# 2. start the database (it lives behind a compose profile, so a plain
+#    `docker compose up` stays on SQLite exactly as before)
+docker compose --profile postgres up -d db
+# 3. create the schema — the API will NOT do this for you on Postgres
+docker compose run --rm api alembic upgrade head
+docker compose --profile postgres up -d
+```
+
+Leave the profile off and everything behaves as it always has. The API logs a
+warning if it finds a Postgres database that has never been migrated.
 
 ### e. What is switched on by default
 
@@ -337,6 +356,17 @@ On the **Airflow** machine:
    Not `localhost` — that would be Airflow's own container. The default if unset
    is `http://host.docker.internal:8123`. The token is sent as `X-Service-Token`
    and must match `TCP_COMPUTE_TOKEN` here, or the callback gets a 401.
+
+   **If the Airflow instance is not yours to configure**, you cannot set that
+   variable, and its callbacks then arrive with no credential and no
+   `X-User-Email` — which fails the ownership check with **403 FORBIDDEN** on
+   every call as soon as real users own projects. Set
+   `TCP_TRUST_UNAUTHENTICATED_CALLBACKS=true` on this side instead: a request on
+   a callback path that names no user is accepted as the orchestrator. Read the
+   note in `.env.example` first — inside those bounds it is unauthenticated
+   access, so it assumes only the orchestrator can reach this API. The runs are
+   still attributed: the backend reads the owner off the project row, so the
+   activity ledger names the person even though Airflow sent nothing.
 
 On **this** machine, in `.env`:
 
@@ -547,21 +577,37 @@ Stop:          docker compose -f docker-compose.hub.yml down
 Update images: docker compose -f docker-compose.hub.yml pull && \
                docker compose -f docker-compose.hub.yml up -d
 ```
-Data (projects, DB, outputs) persists in `data/` across restarts. Deleting the
+Data (projects, outputs) persists in `data/` across restarts. On Postgres the
+database lives in the `pgdata` named volume instead, not under `data/`.
+
+**On SQLite, schema changes apply themselves at boot**, so upgrading is just
+`pull` + `up -d`: `init_db()` creates any missing table (including `runs`) and
+adds missing columns (`jobs.request_id`, `cluster_labels.run_id`). Deleting the
 sqlite DB is safe — it is recreated empty on startup.
 
-**Schema changes apply themselves on SQLite at boot**, so upgrading is just
-`pull` + `up -d`: `init_db()` creates any missing table (including `runs`) and
-adds missing columns (`jobs.request_id`, `cluster_labels.run_id`). Two start-up
-passes then run, both safe to repeat and neither able to stop the service
-booting: projects that predate the `runs` table get a row per run they have had,
-and any run left mid-flight by a restart is released so it can be re-run.
+**On Postgres neither is true.** The schema is Alembic's, so an upgrade is
+`pull` + `alembic upgrade head` + `up -d`, and dropping the database loses the
+data for good. `init_db()` creates nothing there; it warns if the database is
+not migrated and otherwise leaves it alone.
 
-On Postgres these are not automatic — apply the equivalent DDL once.
+Either way, two start-up passes then run, both safe to repeat and neither able
+to stop the service booting: projects that predate the `runs` table get a row
+per run they have had, and any run left mid-flight by a restart is released so
+it can be re-run.
 
-The database uses SQLite WAL, so `data/treecrown.db` is nearly empty on its own
-and the live contents sit in `treecrown.db-wal`. **Copy all three of
+**Backups.** On Postgres:
+`docker compose exec -T db pg_dump -U treecrown -Fc treecrown > backup-$(date +%F).dump`.
+On SQLite the database uses WAL, so `data/treecrown.db` is nearly empty on its
+own and the live contents sit in `treecrown.db-wal` — **copy all three of
 `treecrown.db`, `-wal` and `-shm` together**, or the backup will look blank.
+
+**Which database is actually serving:** `GET /readyz`. If Postgres is
+configured but was unreachable at startup, the service comes up on SQLite
+rather than crash-looping (`TCP_DB_FALLBACK_SQLITE`, default on) and `/readyz`
+reports `"degraded": true`. That is a transition crutch, and it has a real
+cost: the two databases hold different data, so anything written while degraded
+is invisible to Postgres afterwards and there is no merge. Set the flag to
+`false` once Postgres is trusted.
 
 ---
 
@@ -618,6 +664,12 @@ and the live contents sit in `treecrown.db-wal`. **Copy all three of
   must be `http://<this-PC-ip>:8123` and reachable — not `localhost`. Check both
   directions with the three curls in §6d. A `401` on the callback means
   `DRONE_SERVICE_TOKEN` does not match `TCP_COMPUTE_TOKEN`.
+- **Every callback gets `403 FORBIDDEN`** → the callback is resolving as
+  `default` while the project is owned by a real email. Either the worker is not
+  sending `DRONE_SERVICE_TOKEN`, or `TCP_COMPUTE_TOKEN` is unset here — note
+  that an unset `TCP_COMPUTE_TOKEN` means the token is never even compared. If
+  the Airflow side is not yours to change, set
+  `TCP_TRUST_UNAUTHENTICATED_CALLBACKS=true` (§6b).
 - **A project is stuck in `ANALYZING` after a restart** → with Airflow off it is
   released on the next boot and marked failed so it can be re-run. With Airflow
   on, the run is released only once Airflow confirms the DAG run has finished;

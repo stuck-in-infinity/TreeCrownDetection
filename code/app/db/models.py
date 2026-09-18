@@ -16,6 +16,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (
+    BigInteger,
     DateTime,
     Float,
     ForeignKey,
@@ -70,17 +71,21 @@ class Project(Base):
     )
 
     orthos: Mapped[list["Ortho"]] = relationship(
-        back_populates="project", cascade="all, delete-orphan"
+        back_populates="project", cascade="all, delete-orphan",
+        passive_deletes=True
     )
     jobs: Mapped[list["Job"]] = relationship(
-        back_populates="project", cascade="all, delete-orphan"
+        back_populates="project", cascade="all, delete-orphan",
+        passive_deletes=True
     )
     run_rows: Mapped[list["Run"]] = relationship(
         back_populates="project", cascade="all, delete-orphan",
+        passive_deletes=True,
         order_by="Run.number",
     )
     labels: Mapped[list["ClusterLabel"]] = relationship(
-        back_populates="project", cascade="all, delete-orphan"
+        back_populates="project", cascade="all, delete-orphan",
+        passive_deletes=True
     )
 
 
@@ -88,14 +93,16 @@ class Ortho(Base):
     __tablename__ = "orthos"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
-    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), index=True)
+    project_id: Mapped[str] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
     stem: Mapped[str] = mapped_column(String)            # filename without extension
     filename: Mapped[str] = mapped_column(String)
     width: Mapped[int | None] = mapped_column(Integer, nullable=True)
     height: Mapped[int | None] = mapped_column(Integer, nullable=True)
     crs: Mapped[str | None] = mapped_column(String, nullable=True)
     bands: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    size_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
 
     project: Mapped["Project"] = relationship(back_populates="orthos")
 
@@ -112,7 +119,9 @@ class Job(Base):
     )
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
-    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), index=True)
+    project_id: Mapped[str] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
     type: Mapped[str] = mapped_column(String)            # 'analyze' | 'finalize'
     state: Mapped[str] = mapped_column(String, default="QUEUED")  # QUEUED|RUNNING|SUCCEEDED|FAILED
     current_stage: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -160,14 +169,16 @@ class Run(Base):
     )
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
-    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), index=True)
+    project_id: Mapped[str] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
     number: Mapped[int] = mapped_column(Integer)          # work/run_<number>
 
     #: The orthomosaic this run actually used. Nullable because a run recorded
     #: before the ortho library existed cannot be attributed to one, and saying
     #: "not recorded" is better than guessing.
     ortho_id: Mapped[str | None] = mapped_column(
-        ForeignKey("orthos.id"), nullable=True, index=True
+        ForeignKey("orthos.id", ondelete="SET NULL"), nullable=True, index=True
     )
 
     name: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -197,13 +208,15 @@ class ClusterLabel(Base):
     __tablename__ = "cluster_labels"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
-    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), index=True)
+    project_id: Mapped[str] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
     #: Which run these labels describe. Nullable only so the ADD COLUMN
     #: migration can land on an existing table; every new row sets it.
     #: Labels are no longer deleted when a run is archived — that deletion was
     #: what made it impossible to come back and finish an earlier run.
     run_id: Mapped[str | None] = mapped_column(
-        ForeignKey("runs.id"), nullable=True, index=True
+        ForeignKey("runs.id", ondelete="CASCADE"), nullable=True, index=True
     )
     chosen_k: Mapped[int] = mapped_column(Integer)
     cluster_id: Mapped[int] = mapped_column(Integer)

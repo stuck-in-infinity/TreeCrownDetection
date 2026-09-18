@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.api.deps import (
+    attribute_to_owner,
     get_project,
     require_api_key,
     require_service_token,
@@ -32,10 +33,10 @@ from app.core.logging import ERROR_CODES, get_logger
 from app.db.session import get_db
 from app.schemas.project import AnalyzeTrigger
 from app.services import job_claim
+from app.services.run_guard import run_guarded
 from app.services.airflow_client import airflow_enabled, get_dag_run_state, trigger_drone_dag
 from app.services.assets import analyze_asset_fields
 from app.services.state import transition_if
-from app.workers.tasks import job_a_analyze
 
 router = APIRouter()
 
@@ -117,6 +118,7 @@ def drone_api(
         # It also goes into conf, so a DAG that ignores the key still works.
         if body.action == "analyze":
             project = resolve_project(db, user, body.project_id, service=service)
+            attribute_to_owner(request, project)
             selected = resolve_run_ortho(project, body)
             conf["ortho_id"] = selected.id
             _pin_run_ortho(project, selected)
@@ -224,6 +226,7 @@ def run_analyze(
         })
     if body and body.project_id:
         project = resolve_project(db, user, body.project_id, service=service)
+    attribute_to_owner(request, project)
 
     _validate_trigger_body(project, body)
     # If this key's run already succeeded, return that result rather than
@@ -279,7 +282,7 @@ def run_analyze(
     _apply_run_config(db, project, body, previous_state)
 
     try:
-        job_a_analyze.apply(args=[project.id, job.id]).get(propagate=True)
+        run_guarded("job_a_analyze", project.id, job.id)
     except Exception as exc:
         # The task's _fail() has already stored the FAILED state and the error.
         db.refresh(project)

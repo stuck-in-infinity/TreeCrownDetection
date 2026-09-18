@@ -128,9 +128,13 @@ def mirror(db, project, number: int | None = None, commit: bool = True):
     except Exception:                    # noqa: BLE001 - bookkeeping must not fail the request
         log.exception("could not mirror project %s onto its run row",
                       getattr(project, "id", "?"))
+        # Unconditional: on Postgres any failed statement aborts the whole
+        # transaction, so not rolling back poisons the caller's session and the
+        # error they see is an unrelated InFailedSqlTransaction later in the
+        # request. `commit` says who owns the commit, not whether an abort
+        # happened.
         try:
-            if commit:
-                db.rollback()
+            db.rollback()
         except Exception:                # noqa: BLE001
             pass
         return None
@@ -167,6 +171,12 @@ def refresh_project_state(db, project, commit: bool = True) -> str | None:
     except Exception:                    # noqa: BLE001
         log.exception("could not refresh project state for %s",
                       getattr(project, "id", "?"))
+        # As in mirror() above: swallowing the exception without rolling back
+        # leaves a poisoned session on Postgres.
+        try:
+            db.rollback()
+        except Exception:                # noqa: BLE001
+            pass
         return None
 
 

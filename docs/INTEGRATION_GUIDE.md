@@ -261,7 +261,9 @@ IMAGE_FRONTEND=anunay12/treecrown-frontend:latest
 | `TCP_AIRFLOW_AUTH_TOKEN` | Optional | `None` | Bearer token (overrides basic auth) |
 | `TCP_DRONE_DAG_ID` | No | `drone_pipeline` | Name of the Airflow DAG to trigger |
 | `TCP_STORAGE_ROOT` | Yes | `/data/storage` | Where project files are stored |
-| `TCP_DATABASE_URL` | Yes | SQLite in /data | SQLAlchemy DB URL |
+| `TCP_DATABASE_URL` | Yes | SQLite in /data | SQLAlchemy DB URL. Leave at the default and use the `TCP_DB_*` parts for Postgres. |
+| `TCP_DB_NAME` / `TCP_DB_USER` / `TCP_DB_PASSWORD` / `TCP_DB_HOST` / `TCP_DB_PORT` | No | — / — / — / `db` / `5432` | Postgres by parts; the password is percent-encoded for you. |
+| `TCP_DB_FALLBACK_SQLITE` | No | `true` | Start on SQLite if Postgres is unreachable at boot. `GET /readyz` reports which backend is live. |
 | `TCP_MODELS_DIR` | Yes | `/models` | Path to detector weight files |
 | `TCP_DEFAULT_MODEL_KEY` | No | `urban_cambridge` | Default detector model |
 | `HF_HUB_OFFLINE` | Yes | — | Set to `1` to prevent HuggingFace network calls |
@@ -600,6 +602,14 @@ DRONE_API_BASE=http://<backend-host>:8123
 # Optional auth:
 DRONE_SERVICE_TOKEN=<same as TCP_COMPUTE_TOKEN if set>
 ```
+
+If the Airflow instance is administered by another team and that variable cannot
+be set, its callbacks reach the backend with no credential and no user, and fail
+the project ownership check with **403 FORBIDDEN** on every call. The backend
+side has `TCP_TRUST_UNAUTHENTICATED_CALLBACKS=true` for exactly this case; see
+README §6b. No DAG change is needed, and runs are still attributed to a person,
+because the backend reads the owner off the project row rather than off a
+header.
 
 And the DAG's callback request **must include `execution_id`** to prevent the circular loop:
 ```json

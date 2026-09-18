@@ -28,19 +28,19 @@ module never returns 409.
 """
 import os
 
-from fastapi import APIRouter, Depends, Header
+from fastapi import APIRouter, Depends, Header, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
-from app.api.deps import require_service_token
+from app.api.deps import attribute_to_owner, require_service_token
 from app.core.logging import get_logger, request_id_var
 from app.core.storage import project_paths
 from app.db import models
 from app.db.session import get_db
 from app.schemas.compute import ComputeRequest
 from app.services import job_claim
+from app.services.run_guard import run_guarded
 from app.services.assets import asset_response_fields
-from app.workers.tasks import job_a_analyze, job_b_finalize
 
 router = APIRouter()
 
@@ -141,6 +141,7 @@ def _finalize_asset_id(project) -> str:
 
 @router.post("/compute/analyze")
 def compute_analyze(
+    request: Request,
     req: ComputeRequest,
     db: Session = Depends(get_db),
     _svc: str = Depends(require_service_token),
@@ -152,6 +153,8 @@ def compute_analyze(
     project = _get_compute_project(db, req)
     if not project:
         return _err(404, "NOT_FOUND", f"Project {req.project_id} not found", req.project_id)
+    # Airflow sends no identity; the project's owner is whose run this is.
+    attribute_to_owner(request, project)
 
     key = job_claim.compute_key(idempotency_key or req.execution_id)
     prior = job_claim.find_prior(db, project, key)
@@ -175,7 +178,7 @@ def compute_analyze(
     db.add(project); db.commit()
 
     try:
-        job_a_analyze.apply(args=[project.id, job.id]).get(propagate=True)
+        run_guarded("job_a_analyze", project.id, job.id)
     except Exception as exc:
         db.refresh(project)
         log.error("compute analyze failed project=%s job=%s stage=%s",
@@ -188,6 +191,7 @@ def compute_analyze(
 
 @router.post("/compute/finalize")
 def compute_finalize(
+    request: Request,
     req: ComputeRequest,
     db: Session = Depends(get_db),
     _svc: str = Depends(require_service_token),
@@ -199,6 +203,8 @@ def compute_finalize(
     project = _get_compute_project(db, req)
     if not project:
         return _err(404, "NOT_FOUND", f"Project {req.project_id} not found", req.project_id)
+    # Airflow sends no identity; the project's owner is whose run this is.
+    attribute_to_owner(request, project)
 
     key = job_claim.compute_key(idempotency_key or req.execution_id)
     prior = job_claim.find_prior(db, project, key)
@@ -221,7 +227,7 @@ def compute_finalize(
     db.add(project); db.commit()
 
     try:
-        job_b_finalize.apply(args=[project.id, job.id]).get(propagate=True)
+        run_guarded("job_b_finalize", project.id, job.id)
     except Exception as exc:
         db.refresh(project)
         log.error("compute finalize failed project=%s job=%s stage=%s",

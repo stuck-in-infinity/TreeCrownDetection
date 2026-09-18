@@ -7,6 +7,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.settings import settings
+from app.api.callbacks import is_callback_path
 from app.api.v1.router import api_router
 from app.core.errors import install_error_handlers
 from app.core.logging import configure_logging, get_logger, new_request_id, with_context
@@ -113,23 +114,17 @@ def _caller_identity(request: Request) -> tuple[str | None, str | None]:
     return email, request.headers.get("X-User-Id")
 
 
-# Paths Airflow calls back on.
-_COMPUTE_PATH_PREFIXES = (
-    "/api/v1/compute",
-    "/api/v1/project/drone_api",
-    "/api/v1/project/drone_status",
-    "/api/v1/project/analyze",
-    "/api/v1/project/finalize",
-)
+def _attributed_identity(request: Request) -> tuple[str | None, str | None]:
+    """The identity an endpoint resolved for this request, if it set one.
 
-
-def _is_compute_path(path: str) -> bool:
-    if path.startswith(_COMPUTE_PATH_PREFIXES):
-        return True
-    # /api/v1/projects/{id}/analyze and /finalize are callbacks as well.
-    return path.startswith("/api/v1/projects/") and (
-        path.endswith("/analyze") or path.endswith("/finalize")
-    )
+    A callback names its project in the request body, which this middleware
+    cannot read without consuming the stream. The callback endpoints therefore
+    hand the owner back through ``request.state``
+    (``deps.attribute_to_owner``), readable here because the ledger is written
+    after ``call_next``. Without it every DAG callback is logged as anonymous.
+    """
+    email = getattr(request.state, "audit_email", None)
+    return email, getattr(request.state, "audit_user_id", None)
 
 
 @app.middleware("http")
@@ -154,7 +149,7 @@ async def audit_requests(request: Request, call_next):
     path = request.url.path
     # Return the id only on /api/ paths that Airflow does not call, so its
     # responses keep exactly the shape the DAGs expect.
-    if path.startswith("/api/") and not _is_compute_path(path):
+    if path.startswith("/api/") and not is_callback_path(path):
         response.headers["X-Request-Id"] = request_id
 
     try:
@@ -174,14 +169,20 @@ async def audit_requests(request: Request, call_next):
 
     try:
         if _should_audit(request.method, path):
+            # An endpoint that resolved a project wins over the headers: a DAG
+            # callback has no headers to read.
+            owner_email, owner_user_id = _attributed_identity(request)
+            project_id = getattr(request.state, "audit_project_id", None) or (
+                request.path_params.get("project_id")
+                if hasattr(request, "path_params") else None
+            )
             activity_log.append(
-                email=user_email,
-                user_id=user_id,
+                email=owner_email or user_email,
+                user_id=owner_user_id or user_id,
                 action=f"{request.method} {path}",
                 method=request.method,
                 path=path,
-                project_id=request.path_params.get("project_id")
-                if hasattr(request, "path_params") else None,
+                project_id=project_id,
                 status=response.status_code,
                 request_id=request_id,
                 client_ip=client_ip,
@@ -195,6 +196,28 @@ async def audit_requests(request: Request, call_next):
 def livez():
     """Report that the process is up. Used by the Docker healthcheck."""
     return {"status": "ok"}
+
+
+@app.get("/readyz", tags=["meta"])
+def readyz():
+    """Which database is serving, and whether that was the plan.
+
+    Separate from ``/livez``, which must keep answering while the database is
+    down because the Docker healthcheck depends on it. The SQLite fallback
+    leaves the process healthy but serving different data, which a green
+    healthcheck would not show.
+
+    ``degraded: true`` means Postgres was configured, could not be reached at
+    startup, and the service came up on SQLite. Writes made in that state are
+    invisible to Postgres afterwards; see db/session.py.
+    """
+    from app.db import session as db_session
+
+    return {
+        "status": "degraded" if db_session.FELL_BACK else "ok",
+        "database": db_session.ACTIVE_BACKEND,
+        "degraded": db_session.FELL_BACK,
+    }
 
 
 app.include_router(api_router)

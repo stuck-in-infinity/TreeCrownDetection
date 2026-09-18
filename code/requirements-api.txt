@@ -3,16 +3,18 @@ fastapi
 uvicorn[standard]
 celery
 redis
-SQLAlchemy>=2.0
+SQLAlchemy>=2.0,<2.1
 pydantic>=2
 pydantic-settings
 python-multipart        # multipart/form-data uploads
 PyYAML                  # reads the external model catalog (models.yaml)
 gdown                   # download orthos from public Google Drive links (/orthomosaic/from-url)
 
-# For Postgres in production (SQLite needs nothing extra):
-# psycopg2-binary
-# alembic               # migrations
+# Postgres. psycopg 3, not psycopg2: SQLAlchemy 2.x treats postgresql+psycopg
+# as first-class, psycopg2 is maintenance-only, and the binary wheel bundles
+# libpq so the slim image needs no apt packages. SQLite still needs nothing.
+psycopg[binary]>=3.2,<3.3
+alembic>=1.13,<2       # owns the Postgres schema; SQLite self-creates
 
 # ── pipeline deps (also in requirements.txt) ──────────────────────────
 # Installed on the worker host; the API process does not import them directly.

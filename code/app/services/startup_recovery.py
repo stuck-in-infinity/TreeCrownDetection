@@ -181,7 +181,7 @@ def recover_interrupted_runs(db) -> dict:
                 db.query(models.Job)
                 .filter(models.Job.project_id == project.id)
                 .filter(models.Job.state.in_(_LIVE_JOB_STATES))
-                .order_by(models.Job.started_at.desc())
+                .order_by(models.Job.started_at.desc().nullslast())
                 .first()
             )
             if not _is_orphaned(job):

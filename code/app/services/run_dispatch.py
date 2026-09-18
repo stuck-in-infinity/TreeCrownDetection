@@ -34,17 +34,24 @@ def _conf(project_id: str, job_id: str, run: int | None = None) -> dict:
 
 
 def _run_local(task_name: str, project_id: str, job_id: str, run: int | None = None) -> str:
-    """Run a Celery task body in a background daemon thread."""
+    """Start the run in the background and return at once.
+
+    The thread only waits: the run itself happens in its own process, which
+    holds its own wall-clock deadline (services/run_guard.py). A thread could
+    not do that — nothing can kill one, and the pipeline has no cancellation
+    point to poll.
+    """
 
     def _target():
-        from app.workers.tasks import job_a_analyze, job_b_finalize
+        from app.services.run_guard import run_guarded
 
-        task = {"job_a_analyze": job_a_analyze, "job_b_finalize": job_b_finalize}[task_name]
         try:
-            task.apply(args=[project_id, job_id, run])
+            run_guarded(task_name, project_id, job_id, run)
         except Exception:
-            # The task's own _fail() has already stored the FAILED state and the
-            # traceback, so there is nothing left to do here.
+            # Nothing above this thread to report to — the trigger returned
+            # long ago. Whatever happened is already on the Job and the run
+            # row, written by the task's own _fail() or, for a run that had to
+            # kill its own process, by run_guarded.
             pass
 
     threading.Thread(target=_target, name=f"{task_name}:{job_id}", daemon=True).start()

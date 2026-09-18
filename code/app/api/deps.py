@@ -1,19 +1,65 @@
-from fastapi import Depends, Header, HTTPException, Query
+from fastapi import Depends, Header, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
+from app.api.callbacks import is_service_callback_path
 from app.core.settings import settings
 from app.db import models
 from app.db.session import get_db
 
+# Identities that name no person: require_api_key's fallbacks and the string
+# the ledger writes for an unattributed call. Never recorded as an owner.
+_PLACEHOLDER_IDENTITIES = {"", "default", "system", "anonymous"}
+
 
 def service_caller(
+    request: Request,
     x_service_token: str | None = Header(default=None),
+    x_user_email: str | None = Header(default=None, alias="X-User-Email"),
 ) -> bool:
-    """True when the caller is the orchestrator rather than a browser."""
-    # Airflow has no signed-in email to send, so I let its service token stand
-    # in for identity. Gated on compute_token being set, or every anonymous
-    # request would pass as the system.
-    return bool(settings.compute_token) and x_service_token == settings.compute_token
+    """True when the caller is the orchestrator rather than a browser.
+
+    Two ways to qualify:
+
+    1. ``X-Service-Token`` matching ``compute_token``. Gated on compute_token
+       being set, or every anonymous request would pass as the system.
+    2. ``trust_unauthenticated_callbacks``, for an Airflow we do not administer
+       and so cannot give the token. The request must be on a callback path and
+       name no user; within those bounds it is unauthenticated access, so read
+       the setting's comment before turning it on.
+
+    A verified JWT would become a third branch. This is the only place that
+    decides who the orchestrator is.
+    """
+    if settings.compute_token and x_service_token == settings.compute_token:
+        return True
+    if settings.trust_unauthenticated_callbacks and is_service_callback_path(request.url.path):
+        # /projects/{id}/analyze is reachable by both, so without this the flag
+        # would skip the ownership check for signed-in users too.
+        named_user = x_user_email or request.query_params.get("user")
+        return not named_user
+    return False
+
+
+def attribute_to_owner(request: Request | None, project) -> None:
+    """Record whose project this request acted on, for the activity ledger.
+
+    Airflow sends no ``X-User-Email``, and the middleware cannot find the owner
+    itself: a callback names its project in the request body, which the
+    middleware cannot read without consuming the stream. The endpoint has the
+    resolved project, so it leaves the owner on ``request.state`` for
+    ``main._attributed_identity`` to read after the response.
+
+    Never raises: an unattributed ledger line beats a failed run.
+    """
+    if request is None or project is None:
+        return
+    try:
+        request.state.audit_project_id = getattr(project, "id", None)
+        owner = getattr(project, "user_id", None)
+        if owner and owner not in _PLACEHOLDER_IDENTITIES:
+            request.state.audit_email = owner
+    except Exception:
+        pass
 
 
 def require_api_key(

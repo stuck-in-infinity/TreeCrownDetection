@@ -18,6 +18,16 @@ import re
 GENERIC = "COMPUTE_FAILED"
 
 
+class RunTimeout(Exception):
+    """The run passed its wall-clock limit and stopped itself.
+
+    Raised by the SIGALRM handler inside the run's process, so it surfaces in
+    the task body's own ``except`` clause. Defined here, not in
+    services/run_guard.py, so the rule below can match it by type without
+    importing multiprocessing into every failure path.
+    """
+
+
 def _has_errno(exc: BaseException, number: int) -> bool:
     return isinstance(exc, OSError) and getattr(exc, "errno", None) == number
 
@@ -156,6 +166,16 @@ _RULES: list[tuple] = [
         "Re-running will not change it.",
     ),
     (
+        "RUN_TIMEOUT",
+        lambda e, t, ty: isinstance(e, RunTimeout) or "runtimeout" in ty,
+        lambda e, t: str(e) or "The run was stopped for taking too long.",
+        "The run passed the time limit set for it on this server "
+        "(TCP_ANALYZE_TIMEOUT_MIN / TCP_FINALIZE_TIMEOUT_MIN in .env) and "
+        "stopped. Nothing was saved. A smaller orthomosaic or a larger Tile "
+        "size finishes sooner; if the survey is a normal size, ask an "
+        "administrator whether the limit is too tight for this hardware.",
+    ),
+    (
         "COMPUTE_KILLED",
         lambda e, t, ty: (
             "killed" in t and "signal" in t
@@ -222,7 +242,10 @@ def classify(exc: BaseException, stage: str | None = None) -> dict:
 
 
 def _build(code, message, hint, exc, stage) -> dict:
-    raw = str(exc).strip()
+    # Postgres rejects NUL in text and json columns. This dict is written while
+    # recording a failure, so a rejected insert would replace the real error
+    # with a database one. SQLite accepts NUL, so this has never bitten yet.
+    raw = str(exc).replace("\x00", "").strip()
     return {
         "code": code,
         "stage": stage,

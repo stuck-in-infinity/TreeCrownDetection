@@ -64,7 +64,7 @@ def find_prior(db, project, key: str | None):
     return (
         db.query(models.Job)
         .filter_by(project_id=project.id, celery_task_id=key)
-        .order_by(models.Job.started_at.desc())
+        .order_by(models.Job.started_at.desc().nullslast())
         .first()
     )
 
@@ -78,7 +78,7 @@ def active_job(db, project):
             models.Job.state.in_(_ACTIVE_JOB_STATES),
             models.Job.celery_task_id.like(f"{_KEY_PREFIX}%"),
         )
-        .order_by(models.Job.started_at.desc())
+        .order_by(models.Job.started_at.desc().nullslast())
         .first()
     )
 

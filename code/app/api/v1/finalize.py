@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.api.deps import (
+    attribute_to_owner,
     get_project,
     require_api_key,
     require_service_token,
@@ -23,8 +24,8 @@ from app.db import models
 from app.db.session import get_db
 from app.schemas.project import AnalyzeTrigger, FinalizeTrigger
 from app.services import job_claim
+from app.services.run_guard import run_guarded
 from app.services.state import transition_if
-from app.workers.tasks import job_b_finalize
 
 router = APIRouter()
 log = get_logger("app.api")
@@ -67,6 +68,7 @@ def run_finalize(
         })
     if body and body.project_id:
         project = resolve_project(db, user, body.project_id, service=service)
+    attribute_to_owner(request, project)
 
     key = job_claim.compute_key(idempotency_key)
     prior = job_claim.find_prior(db, project, key)
@@ -121,7 +123,7 @@ def run_finalize(
     db.commit()
 
     try:
-        job_b_finalize.apply(args=[project.id, job.id]).get(propagate=True)
+        run_guarded("job_b_finalize", project.id, job.id)
     except Exception as exc:
         db.refresh(project)
         db.refresh(job)

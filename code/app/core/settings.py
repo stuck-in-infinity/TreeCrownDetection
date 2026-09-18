@@ -5,8 +5,24 @@ prefix (e.g. ``TCP_DATABASE_URL``) or by a local ``.env`` file. See
 ``.env.example``.
 """
 from functools import lru_cache
+from urllib.parse import quote_plus
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_SQLITE_DEFAULT = "sqlite:////data/treecrown.db"
+
+
+def _normalize_pg_scheme(url: str) -> str:
+    """Pin Postgres URLs to the psycopg 3 driver.
+
+    A bare ``postgresql://`` resolves to psycopg2, which is not installed —
+    and the failure is a ``ModuleNotFoundError`` raised while importing
+    ``db/session.py``, i.e. before anything exists that could report why.
+    """
+    for bare in ("postgresql://", "postgres://"):
+        if url.startswith(bare):
+            return "postgresql+psycopg://" + url[len(bare):]
+    return url
 
 
 class Settings(BaseSettings):
@@ -19,9 +35,59 @@ class Settings(BaseSettings):
     models_dir: str = "/models"          # directory holding the .pth weight files
 
     # Database and task queue. SQLite is the default for local development;
-    # point database_url at Postgres in production.
-    database_url: str = "sqlite:////data/treecrown.db"
+    # point the database at Postgres in production, either with a full
+    # ``TCP_DATABASE_URL`` or with the ``TCP_DB_*`` parts below.
+    database_url: str = _SQLITE_DEFAULT
     redis_url: str = "redis://localhost:6379/0"
+
+    # Postgres by parts. The first three names match core-stack-backend's
+    # DB_NAME / DB_USER / DB_PASSWORD. Host and port are ours to add: that
+    # deployment hardcodes 127.0.0.1, which inside the api container would be
+    # the api container. Used only when database_url is left at its default;
+    # ``resolved_database_url`` is what the engine reads.
+    db_name: str | None = None       # TCP_DB_NAME
+    db_user: str | None = None       # TCP_DB_USER
+    db_password: str | None = None   # TCP_DB_PASSWORD
+    db_host: str = "db"              # TCP_DB_HOST, the compose service name
+    db_port: int = 5432              # TCP_DB_PORT
+
+    # Come up on SQLite when Postgres is unreachable at startup, instead of
+    # crash-looping. The two databases hold different data: a fallback boot
+    # serves the SQLite file, and writes made during it are invisible to
+    # Postgres afterwards, with no merge. Set False once Postgres is trusted.
+    # /readyz reports which backend is in use.
+    db_fallback_sqlite: bool = True   # TCP_DB_FALLBACK_SQLITE
+    db_fallback_url: str = _SQLITE_DEFAULT  # TCP_DB_FALLBACK_URL
+
+    # How long to wait for Postgres at startup before giving up. pg_isready
+    # goes green during initdb, before the listener accepts connections, so
+    # waiting is needed even with compose's `depends_on: service_healthy`.
+    db_connect_timeout_s: int = 60    # TCP_DB_CONNECT_TIMEOUT_S
+
+    @property
+    def resolved_database_url(self) -> str:
+        """The URL the engine connects with. Read this, never ``database_url``.
+
+        1. An explicit ``TCP_DATABASE_URL`` wins, so every existing deployment
+           and every test fixture keeps working untouched.
+        2. Otherwise ``TCP_DB_NAME`` assembles a Postgres URL from the parts.
+        3. Otherwise SQLite, as before.
+
+        The password is percent-encoded on the way in. Without that, a password
+        containing ``@`` or ``/`` silently re-parses into a different host and
+        the only symptom is an authentication failure that names nothing.
+        """
+        url = (self.database_url or "").strip()
+        if url and url != _SQLITE_DEFAULT:
+            return _normalize_pg_scheme(url)
+        if self.db_name:
+            user = quote_plus(self.db_user or "")
+            auth = f"{user}:{quote_plus(self.db_password)}@" if self.db_password else (
+                f"{user}@" if user else ""
+            )
+            return (f"postgresql+psycopg://{auth}"
+                    f"{self.db_host}:{self.db_port}/{self.db_name}")
+        return url or _SQLITE_DEFAULT
 
     # Airflow orchestration (optional). With airflow_base_url set, the /runs/*
     # trigger endpoints start the matching Airflow DAG, which calls back into
@@ -48,6 +114,23 @@ class Settings(BaseSettings):
     # Set to 0 for no limit.
     ortho_transfer_timeout_min: int = 45
 
+    # Wall-clock limit on one pipeline run, in minutes, per operation. The run
+    # gets its own process, which stops itself when the budget is spent: first
+    # by raising inside the task, then by killing its own interpreter after
+    # run_kill_grace_s if it is stuck in a C call. Self-timing rather than
+    # supervised by the API, which does not reliably outlive the run.
+    #
+    # A stopped run is recorded FAILED with code RUN_TIMEOUT, so the project
+    # does not stay stuck in ANALYZING.
+    #
+    # Sizing: detection + DINOv2 on a large survey can run well past ten
+    # minutes, and this cannot tell wedged from busy. Time a real run on the
+    # target hardware first. 0, or run_timeout_enabled=False, means no limit.
+    run_timeout_enabled: bool = True   # TCP_RUN_TIMEOUT_ENABLED
+    analyze_timeout_min: int = 10      # TCP_ANALYZE_TIMEOUT_MIN, 0 = no limit
+    finalize_timeout_min: int = 10     # TCP_FINALIZE_TIMEOUT_MIN, 0 = no limit
+    run_kill_grace_s: int = 30         # grace before the run kills its own process
+
     # Model registry. models_manifest is an external catalog of detectors and
     # backbones; mount it as a Docker volume so the catalog can change without
     # rebuilding the image. If the file is missing, models_registry uses its
@@ -71,6 +154,18 @@ class Settings(BaseSettings):
     # orchestrator, which sends it as ``X-Service-Token: <compute_token>``.
     api_key: str | None = None
     compute_token: str | None = None
+
+    # Trust callbacks that carry no credential. Our Airflow is administered by
+    # another team, so DRONE_SERVICE_TOKEN cannot be set on their worker and its
+    # callbacks arrive with neither X-Service-Token nor X-User-Email, failing
+    # the ownership check in resolve_project with 403. With this True, a request
+    # on a callback path (api/callbacks.py) that names no user is accepted as
+    # the orchestrator.
+    #
+    # Anyone who can reach this port can then drive any project, so this asserts
+    # that only the orchestrator can reach the API. Leave False wherever it is
+    # publicly routable. Goes back to False once Airflow sends a JWT.
+    trust_unauthenticated_callbacks: bool = False
 
     # Google sign-in, used for audit and ownership only. With auth_enabled True,
     # the human endpoints require an ``X-User-Email`` header, which the frontend
