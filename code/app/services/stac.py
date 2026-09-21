@@ -390,14 +390,14 @@ def _first_geojson(poly_dir: str) -> str | None:
     return os.path.join(poly_dir, files[0]) if files else None
 
 
-def write_stac_item(project, chosen_k: int | None = None) -> str:
+def write_stac_item(project, chosen_k: int | None = None, run: int | None = None) -> str:
     """Build the STAC Item, write it into the run's step4 output, return the path.
 
     job_b_finalize is what calls this, so the item is tagged
     ``stage="finalize"``.
     """
-    item = build_stac_item(project, chosen_k=chosen_k, stage="finalize")
-    out = stac_item_path(project)
+    item = build_stac_item(project, chosen_k=chosen_k, run=run, stage="finalize")
+    out = stac_item_path(project, run)
     os.makedirs(os.path.dirname(out), exist_ok=True)
     with open(out, "w") as f:
         json.dump(item, f, indent=2)

@@ -109,6 +109,29 @@ def claim(db, project, key: str, job_type: str, request_id: str | None = None):
         prior = find_prior(db, project, key)
         if prior and prior.state == "SUCCEEDED":
             return None, REPLAY
+        if prior and prior.state == "FAILED":
+            reclaimed = (
+                db.query(models.Job)
+                .filter(models.Job.id == prior.id, models.Job.state == "FAILED")
+                .update(
+                    {
+                        models.Job.state: "RUNNING",
+                        models.Job.error: None,
+                        models.Job.finished_at: None,
+                        models.Job.current_stage: None,
+                        models.Job.progress: 0.0,
+                        models.Job.started_at: naive_now(),
+                        models.Job.request_id: request_id,
+                    },
+                    synchronize_session=False,
+                )
+            )
+            db.commit()
+            if reclaimed:
+                db.refresh(prior)
+                log.info("compute claim retry project=%s key=%s type=%s job=%s",
+                         project.id, key, job_type, prior.id)
+                return prior, WON
         log.warning("compute claim duplicate project=%s key=%s type=%s",
                     project.id, key, job_type)
         return None, DUPLICATE

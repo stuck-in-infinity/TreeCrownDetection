@@ -28,9 +28,11 @@ def normalize_species(val) -> str:
     return s or "unlabelled"
 
 
-def build_config(project) -> types.SimpleNamespace:
+def build_config(project, run: int | None = None) -> types.SimpleNamespace:
     """Build the config object the pipeline functions expect."""
-    p = project_paths(project.id, getattr(project, "current_run", 1) or 1)
+    if run is None:
+        run = getattr(project, "current_run", 1) or 1
+    p = project_paths(project.id, run)
     params = dict(project.params or {})
     _, model_path = resolve_model_path(project.model_key)
 

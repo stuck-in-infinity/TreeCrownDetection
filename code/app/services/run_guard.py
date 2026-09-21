@@ -1,7 +1,7 @@
 """Run a pipeline task in its own process, under a wall-clock limit.
 
 Every dispatch path calls ``task.apply()``, which runs the body in the calling
-process — a daemon thread for local dispatch, the request threadpool for the
+process, a daemon thread for local dispatch, the request threadpool for the
 ``/compute/*`` and ``drone_api`` callbacks. A thread cannot be killed and the
 pipeline has no cancellation point to poll, so the limit needs its own process.
 Celery's ``task_time_limit`` does not apply either: ``.apply()`` never reaches a
@@ -37,7 +37,7 @@ EXIT_FAILED = 1          # ordinary failure; the task's _fail() recorded it
 EXIT_TIMED_OUT = 75      # SIGALRM path; the task's _fail() recorded it
 EXIT_HARD_KILLED = 76    # watchdog path; nothing recorded, the parent must
 
-#: task name -> the settings attribute holding its budget, in minutes.
+#: task name: the settings attribute holding its budget, in minutes.
 _BUDGETS = {
     "job_a_analyze": "analyze_timeout_min",
     "job_b_finalize": "finalize_timeout_min",
@@ -48,10 +48,8 @@ _STAGES = {"job_a_analyze": "analyze", "job_b_finalize": "finalize"}
 #: Set by the child when its run ends, so the watchdog stands down.
 _FINISHED: threading.Event | None = None
 
-
 class RunFailed(Exception):
     """The run did not succeed. Details are already on the Job and the run row."""
-
 
 def budget_seconds(task_name: str) -> float | None:
     """This task's wall-clock budget in seconds, or None for no limit."""
@@ -59,7 +57,6 @@ def budget_seconds(task_name: str) -> float | None:
         return None
     minutes = getattr(settings, _BUDGETS.get(task_name, ""), 0) or 0
     return float(minutes) * 60 if minutes > 0 else None
-
 
 def _arm_self_timeout(budget_s: float, stage: str, job_id: str) -> None:
     """Make the current process stop itself once ``budget_s`` has passed."""
@@ -95,14 +92,12 @@ def _arm_self_timeout(budget_s: float, stage: str, job_id: str) -> None:
     threading.Thread(target=_watchdog, name=f"timeout:{job_id[:12]}",
                      daemon=True).start()
 
-
 def _disarm() -> None:
     """Stop both mechanisms once the run has finished on its own."""
     if hasattr(signal, "SIGALRM"):
         signal.setitimer(signal.ITIMER_REAL, 0)
     if _FINISHED is not None:
         _FINISHED.set()
-
 
 def _child(task_name: str, project_id: str, job_id: str, run: int | None) -> int:
     """The child process's entry point: arm the clock, then run the task."""
@@ -115,7 +110,7 @@ def _child(task_name: str, project_id: str, job_id: str, run: int | None) -> int
 
     task = {"job_a_analyze": job_a_analyze, "job_b_finalize": job_b_finalize}[task_name]
     try:
-        task.apply(args=[project_id, job_id, run])
+        task.apply(args=[project_id, job_id, run]).get(propagate=True)
     except RunTimeout:
         # The task body already caught this, called _fail() and re-raised.
         return EXIT_TIMED_OUT
@@ -125,6 +120,10 @@ def _child(task_name: str, project_id: str, job_id: str, run: int | None) -> int
         _disarm()
     return EXIT_OK
 
+def _child_main(task_name: str, project_id: str, job_id: str, run: int | None) -> None:
+    import sys
+
+    sys.exit(_child(task_name, project_id, job_id, run))
 
 def _spawn(task_name: str, project_id: str, job_id: str, run: int | None):
     """Start the run in its own interpreter. Separate so tests can patch it.
@@ -135,14 +134,13 @@ def _spawn(task_name: str, project_id: str, job_id: str, run: int | None):
     """
     ctx = multiprocessing.get_context("spawn")
     proc = ctx.Process(
-        target=_child,
+        target=_child_main,
         args=(task_name, project_id, job_id, run),
         daemon=True,
         name=f"{task_name}:{job_id[:12]}",
     )
     proc.start()
     return proc
-
 
 def _record(project_id: str, job_id: str, run: int | None, exc: Exception) -> None:
     """Write the failure a child that died abruptly could not write itself.
@@ -168,7 +166,6 @@ def _record(project_id: str, job_id: str, run: int | None, exc: Exception) -> No
             pass
     finally:
         db.close()
-
 
 def run_guarded(task_name: str, project_id: str, job_id: str,
                 run: int | None = None) -> None:

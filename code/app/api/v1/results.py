@@ -18,15 +18,12 @@ from app.services.assets import analyze_asset_fields
 router = APIRouter()
 log = get_logger("app.api")
 
-
 class ConsentBody(BaseModel):
     # 0 = no / not given, 1 = yes all data, 2 = yes unlabelled (Step-1) only.
     consent: int
 
-
 def _run(project) -> int:
     return getattr(project, "current_run", 1) or 1
-
 
 def _require_completed(project) -> None:
     """425 NOT_READY until the run has actually produced results."""
@@ -36,7 +33,6 @@ def _require_completed(project) -> None:
             "project_id": project.id,
             "hint": "results appear only after Finalize completes — upload the orthomosaic, "
                     "run analysis, submit the labels CSV, then run Finalize"})
-
 
 def build_results_payload(project) -> dict:
     """Build the final summary + download links for the current run.
@@ -91,13 +87,11 @@ def build_results_payload(project) -> dict:
     payload.update(analyze_asset_fields(project))
     return payload
 
-
 @router.get("/projects/{project_id}/results")
 @router.get("/project/results")
 def results(project=Depends(get_project)):
     _require_completed(project)
     return build_results_payload(project)
-
 
 @router.post("/projects/{project_id}/consent")
 @router.post("/project/consent")
@@ -124,7 +118,6 @@ def submit_consent(
     return {"project_id": project.id, "consent": project.consent,
             "consent_at": project.consent_at.isoformat()}
 
-
 @router.get("/projects/{project_id}/results/kmz")
 @router.get("/project/results/kmz")
 def download_kmz(project=Depends(get_project)):
@@ -139,7 +132,6 @@ def download_kmz(project=Depends(get_project)):
         f, media_type="application/vnd.google-earth.kmz", filename="species_map.kmz"
     )
 
-
 @router.get("/projects/{project_id}/results/crown-master.csv")
 @router.get("/project/results/crown-master.csv")
 def download_master(project=Depends(get_project)):
@@ -151,7 +143,6 @@ def download_master(project=Depends(get_project)):
             "hint": "this run finished without writing crown_master.csv — re-run the analysis "
                     "and finalize again to rebuild it"})
     return FileResponse(f, media_type="text/csv", filename="crown_master.csv")
-
 
 @router.get("/projects/{project_id}/results/polygon-species.csv")
 @router.get("/project/results/polygon-species.csv")
@@ -165,7 +156,6 @@ def download_polyspecies(project=Depends(get_project)):
                     "labels CSV named every cluster, then finalize again"})
     return FileResponse(f, media_type="text/csv", filename="polygon_species.csv")
 
-
 @router.get("/projects/{project_id}/results/confusion-matrix.png")
 @router.get("/project/results/confusion-matrix.png")
 def download_cm(project=Depends(get_project)):
@@ -177,7 +167,6 @@ def download_cm(project=Depends(get_project)):
             "hint": "this file is optional — it is only produced when ground truth was "
                     "uploaded before finalizing; the rest of the results are unaffected"})
     return FileResponse(f, media_type="image/png")
-
 
 @router.get("/projects/{project_id}/results/stac-item.json")
 @router.get("/project/results/stac-item.json")
@@ -191,7 +180,6 @@ def download_stac_item(project=Depends(get_project)):
                     "and finalize again to rebuild it"})
     return FileResponse(f, media_type="application/json", filename="stac_item.json")
 
-
 # -- run history: list + per-run results for comparison (v5) ----------------
 _ASSETS = {
     "kmz": ("step4_output", "species_map.kmz",
@@ -202,7 +190,6 @@ _ASSETS = {
     "stac-item.json": ("step4_output", "stac_item.json", "application/json", "stac_item.json"),
 }
 
-
 def _asset_path(project_id: str, run: int, asset: str):
     spec = _ASSETS.get(asset)
     if spec is None:
@@ -211,7 +198,6 @@ def _asset_path(project_id: str, run: int, asset: str):
     dir_key, fname, media, download_name = spec
     p = project_paths(project_id, run)
     return os.path.join(p[dir_key], fname), media, download_name
-
 
 def _run_results_payload(project, run: int) -> dict:
     """Results summary for a specific (possibly archived) run, with run-scoped
@@ -250,7 +236,6 @@ def _run_results_payload(project, run: int) -> dict:
     payload.update(analyze_asset_fields(project, run))
     return payload
 
-
 def _run_meta_from_rows(db, project) -> list[dict] | None:
     """Build the history from the ``runs`` table, which is the record.
 
@@ -284,7 +269,6 @@ def _run_meta_from_rows(db, project) -> list[dict] | None:
             "ortho_stem": o.stem if o else None,
         })
     return out
-
 
 def _run_meta(project) -> list[dict]:
     """All runs (archived + current), oldest first, with results availability."""
@@ -320,14 +304,13 @@ def _run_meta(project) -> list[dict]:
     })
     return entries
 
-
 def _decorate(db, project, entries: list[dict]) -> list[dict]:
     """Add per-run facts the run picker needs: the row, the link, and whether
     the user is allowed to act on it.
 
     ``can_label`` and ``can_finalize`` are decided HERE and not re-derived in
-    the browser. The rule is not "is the state in this list" — finalize also
-    needs the run to have labels — and a second copy of that rule in JavaScript
+    the browser. The rule is not "is the state in this list", finalize also
+    needs the run to have labels, and a second copy of that rule in JavaScript
     would be a second thing to keep right. The frontend enables a button when
     the server says so.
     """
@@ -379,14 +362,13 @@ def _decorate(db, project, entries: list[dict]) -> list[dict]:
             e["can_finalize"] = False
     return entries
 
-
 @router.get("/projects/{project_id}/runs")
 @router.get("/project/runs")
 def list_runs(project=Depends(get_project), ortho_id: str | None = None,
               run: int | None = None, db: Session = Depends(get_db)):
     """Run history for this project.
 
-    ``ortho_id`` narrows it to the runs done on one orthomosaic — what the
+    ``ortho_id`` narrows it to the runs done on one orthomosaic, what the
     library rows in step 2 ask for when they are expanded. A run whose input
     was never recorded (it predates the ortho library) is deliberately returned
     by NEITHER filter rather than by all of them: putting somebody's run under
@@ -421,7 +403,6 @@ def list_runs(project=Depends(get_project), ortho_id: str | None = None,
         "runs": entries,
     }
 
-
 @router.get("/projects/{project_id}/runs/{run}/results")
 @router.get("/project/runs/{run}/results")
 def run_results(run: int, project=Depends(get_project)):
@@ -436,7 +417,6 @@ def run_results(run: int, project=Depends(get_project)):
             "hint": "check the run history for this project and use a run number it lists",
             "details": {"run": run, "available_runs": list(range(1, last + 1))}})
     return _run_results_payload(project, run)
-
 
 @router.get("/projects/{project_id}/runs/{run}/results/{asset}")
 @router.get("/project/runs/{run}/results/{asset}")
@@ -455,7 +435,6 @@ def run_asset(run: int, asset: str, project=Depends(get_project)):
     if download_name:
         kwargs["filename"] = download_name
     return FileResponse(path, **kwargs)
-
 
 def _read_validation(p: dict):
     """Derive simple metrics from step3's validation_detail.csv (acc + counts)."""

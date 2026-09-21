@@ -7,7 +7,7 @@ optional: with no credentials configured, the request goes out unauthenticated.
 The Airflow v1 REST call being made:
     POST {base}/api/v1/dags/{dag_id}/dagRuns
     body: {"conf": {...}}
-    -> {"dag_run_id": "...", "state": "queued", ...}
+: {"dag_run_id": "...", "state": "queued", ...}
 """
 import base64
 import json
@@ -19,11 +19,9 @@ from app.core.settings import settings
 
 log = get_logger("app.airflow")
 
-
 def airflow_enabled() -> bool:
     """True when an Airflow base URL is set; otherwise the compute runs here."""
     return bool((settings.airflow_base_url or "").strip())
-
 
 def _auth_header() -> dict:
     """Build the auth header. A bearer token takes priority over basic auth, and
@@ -34,7 +32,6 @@ def _auth_header() -> dict:
         raw = f"{settings.airflow_username}:{settings.airflow_password or ''}".encode()
         return {"Authorization": "Basic " + base64.b64encode(raw).decode()}
     return {}
-
 
 def trigger_dag(dag_id: str, conf: dict, timeout: int = 30) -> str:
     """Start a DAG run and return its ``dag_run_id``.
@@ -65,11 +62,9 @@ def trigger_dag(dag_id: str, conf: dict, timeout: int = 30) -> str:
         err.code = ERROR_CODES["AIRFLOW_UNREACHABLE"]
         raise err from e
 
-
 def trigger_drone_dag(conf: dict, timeout: int = 30) -> str:
     """Start the combined drone_pipeline DAG and return its dag_run_id."""
     return trigger_dag(settings.drone_dag_id, conf, timeout=timeout)
-
 
 def get_dag_run_state(dag_run_id: str, dag_id: str | None = None, timeout: int = 10) -> str:
     """Return a DAG run's state: queued, running, success or failed.

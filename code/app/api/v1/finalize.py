@@ -84,7 +84,12 @@ def run_finalize(
             "project_id": project.id,
         })
 
-    n_labels = db.query(models.ClusterLabel).filter_by(project_id=project.id).count()
+    from app.services import run_registry
+    active_row = run_registry.ensure_run(db, project, project.current_run or 1)
+    db.commit()
+    n_labels = db.query(models.ClusterLabel).filter_by(
+        project_id=project.id, run_id=active_row.id
+    ).count()
     if n_labels == 0:
         raise HTTPException(400, {
             "code": "BAD_REQUEST",

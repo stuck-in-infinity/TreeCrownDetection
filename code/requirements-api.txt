@@ -1,4 +1,4 @@
-# ── API / service layer ───────────────────────────────────────────────
+#  API / service layer
 fastapi
 uvicorn[standard]
 celery
@@ -16,7 +16,7 @@ gdown                   # download orthos from public Google Drive links (/ortho
 psycopg[binary]>=3.2,<3.3
 alembic>=1.13,<2       # owns the Postgres schema; SQLite self-creates
 
-# ── pipeline deps (also in requirements.txt) ──────────────────────────
+#  pipeline deps (also in requirements.txt)
 # Installed on the worker host; the API process does not import them directly.
 #   torch torchvision torchaudio timm
 #   detectron2 detectree2

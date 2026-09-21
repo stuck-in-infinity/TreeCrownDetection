@@ -36,13 +36,15 @@ def asset_response_fields(
 ) -> dict:
     version = run_version(project, run)
     portable_asset_id = _portable_asset_id(asset_id)
+    stac = stac_response(project, portable_asset_id, version, stage=stage)
     return {
         "project_id": project.id,
         "asset_id": portable_asset_id,
         "asset_ids": [portable_asset_id],
         "version": str(version),
         "hosting_platform": HOSTING_PLATFORM,
-        "stac": stac_response(project, portable_asset_id, version, stage=stage),
+        "stac": stac,
+        "stac_spec": stac,
     }
 
 

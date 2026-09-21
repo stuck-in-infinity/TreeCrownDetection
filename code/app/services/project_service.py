@@ -6,13 +6,12 @@ from app.schemas.project import OrthoOut, ProjectOut
 # work/run_<n+1> folder.
 USED_RUN_STATES = {"AWAITING_LABELS", "LABELS_SUBMITTED", "COMPLETED", "FAILED"}
 
-
 def archive_current_run(db, project, archived_state: str | None = None) -> None:
     """Add a summary of the current run to project.runs and increment
     current_run, so the next analyze computes into a new folder.
 
     Also clears the per-run review fields off the project and stamps the
-    outgoing run's row. Cluster labels are KEPT — they belong to the archived
+    outgoing run's row. Cluster labels are KEPT, they belong to the archived
     run and are what let it be finished later. Does not commit; the caller owns
     the transaction.
     """
@@ -66,13 +65,12 @@ def archive_current_run(db, project, archived_state: str | None = None) -> None:
 
     # The cluster labels are NOT deleted any more. This used to be
     #
-    #     db.query(models.ClusterLabel).filter_by(project_id=project.id).delete()
+    # db.query(models.ClusterLabel).filter_by(project_id=project.id).delete()
     #
-    # which threw away the user's species judgement — the most expensive thing
-    # they produce — every time a new run opened. It is the single reason an
+    # which threw away the user's species judgement, the most expensive thing
+    # they produce, every time a new run opened. It is the single reason an
     # earlier run could never be picked up and finished later. Labels now carry
     # ``run_id`` and stay with the run they describe.
-
 
 def _last_error(project) -> dict | None:
     """Return the failure details when the project is FAILED, else None.
@@ -111,7 +109,6 @@ def _last_error(project) -> dict | None:
     return {"code": "COMPUTE_FAILED", "stage": stage, "message": raw,
             "hint": None, "details": None}
 
-
 def _project_files_url(project) -> str | None:
     hash_ = getattr(project, "share_hash", None)
     if not hash_:
@@ -123,7 +120,6 @@ def _project_files_url(project) -> str | None:
     except Exception:
         pass
     return None
-
 
 def serialize_project(project) -> ProjectOut:
     """Convert a Project row into the API response model."""

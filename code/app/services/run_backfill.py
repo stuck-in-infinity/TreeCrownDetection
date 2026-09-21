@@ -5,7 +5,7 @@ database when the table appeared: their history lives in the ``project.runs``
 JSON column plus the live fields on the project row.
 
 It runs once at start-up, next to ``startup_recovery``, and follows the same two
-rules for the same reasons. It is safe to run twice — a project that already has
+rules for the same reasons. It is safe to run twice, a project that already has
 run rows is skipped, so a restart never duplicates anything. And it never
 raises: a project left un-backfilled shows an empty run list, which somebody can
 put right, whereas a service that will not boot cannot be fixed from the outside.
@@ -27,14 +27,12 @@ from app.db import models
 
 log = get_logger("app.run_backfill")
 
-
 def _ortho_id_for(project, entry_params: dict) -> str | None:
     pinned = (entry_params or {}).get("ortho_id")
     if pinned and any(o.id == pinned for o in (project.orthos or [])):
         return pinned
     orthos = list(project.orthos or [])
     return orthos[0].id if len(orthos) == 1 else None
-
 
 def backfill_runs(db) -> dict:
     """Give every project without run rows one row per run it has had."""
@@ -100,7 +98,7 @@ def backfill_runs(db) -> dict:
             projects_touched += 1
 
             # Existing labels describe whatever run was live when they were
-            # submitted, which is the current one — archiving used to delete
+            # submitted, which is the current one, archiving used to delete
             # them, so no older label rows can exist.
             live_row = by_number.get(current)
             if live_row is not None:

@@ -91,7 +91,6 @@ class Config:
         '99ffffff',  # white
     ]
 
-
 # Utilities.
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -143,7 +142,6 @@ def auto_detect_csv_columns(df):
         label_col = min(remaining, key=lambda c: df[c].nunique())
     
     return filename_col, label_col
-
 
 # Step 1: crop the crowns, extract features, and cluster them.
 
@@ -213,7 +211,6 @@ def step1_crop_crowns(config):
     print(f'   Crown TIFFs in: {dir_crowns}')
     return dir_crowns
 
-
 def build_dinov2(model_name, img_size):
     """Load the DINOv2 model used to describe each crown.
 
@@ -224,7 +221,6 @@ def build_dinov2(model_name, img_size):
                               num_classes=0, img_size=img_size)
     model.eval().to(device)
     return model
-
 
 def step1_extract_features(config, dir_crowns, model=None):
     """Describe every crown image as a DINOv2 feature vector."""
@@ -281,6 +277,8 @@ def step1_extract_features(config, dir_crowns, model=None):
             features.append(feat.cpu().numpy())
             names.extend(nms)
         
+        if not features:
+            raise ValueError('No crowns to cluster: the detector found no crowns.')
         features = np.vstack(features)
         np.save(feat_npy, features)
         pd.DataFrame({'image_name': names}).to_csv(feat_csv, index=False)
@@ -309,18 +307,17 @@ def step1_extract_features(config, dir_crowns, model=None):
     
     return X, names_df, dir_features
 
-
 def _write_cluster_thumbs(config, cl_df, dir_crowns, k_dir, k):
     """Render the most typical crowns of each cluster to ``k<k>/thumbs/``.
 
     "Most typical" means nearest the cluster centre, which is what
     ``dist_to_centroid`` records. Ordering by filename instead would show
-    whichever crowns happened to be detected first — that is tile order, and it
+    whichever crowns happened to be detected first, that is tile order, and it
     says nothing about what the cluster contains.
 
     How many per cluster comes from ``THUMBS_PER_CLUSTER`` (default 5). At five
     crowns and a 200px edge these are roughly 20 KB each, so even a long k list
-    adds a couple of megabytes to a run — nothing next to the crown GeoTIFFs
+    adds a couple of megabytes to a run, nothing next to the crown GeoTIFFs
     themselves.
 
     A crown that will not render is skipped with a warning rather than failing
@@ -351,27 +348,51 @@ def _write_cluster_thumbs(config, cl_df, dir_crowns, k_dir, k):
         note += f'  ({failed} could not be rendered — the API will retry these on demand)'
     print(note)
 
+def usable_k_values(k_list, n_crowns):
+    usable = []
+    for k in k_list:
+        k = int(k)
+        if 2 <= k <= n_crowns - 1 and k not in usable:
+            usable.append(k)
+    return usable
 
 def step1_cluster(config, X, names_df, dir_crowns):
     """Run K-means at each k in the configured list."""
     print('\n' + '='*70)
     print('STEP 1C: MULTI-K CLUSTERING')
     print('='*70)
-    
+
     dir_cluster = os.path.join(config.STEP1_OUTPUT, 'clustering')
     make_dirs(dir_cluster)
-    
+
+    n_crowns = len(X)
+    requested = list(config.K_LIST)
+    usable = usable_k_values(requested, n_crowns)
+    if n_crowns == 0:
+        raise ValueError('No crowns to cluster: the detector found no crowns.')
+    if not usable:
+        raise ValueError(
+            f'Too few crowns to cluster: n_samples={n_crowns}, but every '
+            f'requested k ({requested}) needs n_clusters <= n_samples - 1 '
+            f'(at least 3 crowns for k=2).'
+        )
+    dropped = [k for k in requested if k not in usable]
+    if dropped:
+        print(f'  k values clamped {requested} → {usable} '
+              f'(only {n_crowns} crowns; k must be <= {n_crowns - 1})')
+    config.K_LIST = usable
+
     inertia_vals = []
     silhouette_vals = []
     db_vals = []
     all_cluster_labels = {}
-    
+
     for k in config.K_LIST:
         print(f'  k={k} ...', end=' ')
         km = KMeans(n_clusters=k, random_state=42, n_init=10)
         cl = km.fit_predict(X)
         all_cluster_labels[k] = cl
-        
+
         inertia_vals.append(km.inertia_)
         sil = silhouette_score(X, cl, sample_size=min(5000, len(X)), random_state=42)
         db = davies_bouldin_score(X, cl)
@@ -428,7 +449,6 @@ def step1_cluster(config, X, names_df, dir_crowns):
     print(f'   Fill in the species column in k{{chosen_k}}_cluster_species_map.csv')
     
     return all_cluster_labels, inertia_vals, silhouette_vals, db_vals, dir_cluster
-
 
 def step1_analyze_k(config, inertia_vals, silhouette_vals, db_vals, dir_cluster):
     """Score each k and draw the plot that helps a user choose one."""
@@ -502,7 +522,6 @@ def step1_analyze_k(config, inertia_vals, silhouette_vals, db_vals, dir_cluster)
     
     print(f'  Saved: clustering/k_selection.png')
 
-
 def step1_tsne(config, X, names_df, all_cluster_labels, dir_cluster):
     """Draw a t-SNE scatter plot of the crowns for each value of k."""
     print('\n' + '='*70)
@@ -549,7 +568,6 @@ def step1_tsne(config, X, names_df, all_cluster_labels, dir_cluster):
         plt.close(fig)
     
     print(' Step 1 complete.')
-
 
 # Step 2: turn the cluster names into species labels on every crown.
 
@@ -683,7 +701,6 @@ def step2_assign_species(config):
     
     print('\n Step 2 complete.')
 
-
 # Step 3: score the result against ground truth, if there is any.
 
 def step3_validate(config):
@@ -768,7 +785,6 @@ def step3_validate(config):
     val_df.to_csv(os.path.join(val_output, 'validation_detail.csv'), index=False)
 
     print('\n Folder-based validation complete.')
-
 
 # Step 4: export the species map as a KMZ for Google Earth.
 
@@ -889,7 +905,6 @@ def step4_export_kmz(config):
     print(f'   File size: {size_mb:.1f} MB')
     print(f'   → Open in Google Earth Pro or earth.google.com')
 
-
 # Running the whole pipeline.
 
 def load_config(config_path):
@@ -911,7 +926,6 @@ def load_config(config_path):
             f"See config_example.py for the expected format."
         )
     return module.Config()
-
 
 def main():
     """Command-line entry point: run one step, or all of them."""
@@ -1018,7 +1032,6 @@ Workflow:
         if os.path.exists(config.GROUND_TRUTH_CSV):
             val_output = config.STEP3_VALIDATION_OUTPUT or os.path.join(config.STEP2_OUTPUT, 'step3_validation')
             print(f'  - Validation results: {val_output}/')
-
 
 if __name__ == '__main__':
     main()

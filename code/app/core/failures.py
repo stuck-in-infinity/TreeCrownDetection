@@ -17,7 +17,6 @@ import re
 # Code used when no rule matches.
 GENERIC = "COMPUTE_FAILED"
 
-
 class RunTimeout(Exception):
     """The run passed its wall-clock limit and stopped itself.
 
@@ -27,10 +26,8 @@ class RunTimeout(Exception):
     importing multiprocessing into every failure path.
     """
 
-
 def _has_errno(exc: BaseException, number: int) -> bool:
     return isinstance(exc, OSError) and getattr(exc, "errno", None) == number
-
 
 def _type_chain(exc: BaseException) -> str:
     """Exception class names down the __cause__/__context__ chain, lowercased.
@@ -46,7 +43,6 @@ def _type_chain(exc: BaseException) -> str:
         cur = cur.__cause__ or cur.__context__
     return " ".join(names)
 
-
 def _full_text(exc: BaseException) -> str:
     """Message text down the same chain, lowercased."""
     parts, seen, cur = [], set(), exc
@@ -56,8 +52,7 @@ def _full_text(exc: BaseException) -> str:
         cur = cur.__cause__ or cur.__context__
     return " ".join(parts).lower()
 
-
-# Each rule is (code, match(exc, text, types) -> bool, message, hint).
+# Each rule is (code, match(exc, text, types): bool, message, hint).
 # `message` and `hint` may instead be callables taking (exc, text), for details
 # only known at failure time such as which file was missing.
 _RULES: list[tuple] = [
@@ -188,7 +183,6 @@ _RULES: list[tuple] = [
     ),
 ]
 
-
 def _missing_path(exc: BaseException) -> str | None:
     """The filename out of a FileNotFoundError, basename only.
 
@@ -204,7 +198,6 @@ def _missing_path(exc: BaseException) -> str | None:
         return None
     base = str(name).replace("\\", "/").rstrip("/").split("/")[-1]
     return base or None
-
 
 def classify(exc: BaseException, stage: str | None = None) -> dict:
     """Interpret a pipeline exception. Never raises, since the failure path
@@ -239,7 +232,6 @@ def classify(exc: BaseException, stage: str | None = None) -> dict:
         return {"code": GENERIC, "stage": stage,
                 "message": "The run failed.", "hint": None,
                 "details": {"exception": type(exc).__name__}}
-
 
 def _build(code, message, hint, exc, stage) -> dict:
     # Postgres rejects NUL in text and json columns. This dict is written while

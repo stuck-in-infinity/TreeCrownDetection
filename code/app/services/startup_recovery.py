@@ -1,8 +1,8 @@
 """Release runs that a restart killed, so their projects are not stuck forever.
 
 A run starts by putting the project into ``ANALYZING`` (or ``FINALIZING``) and
-kicking off the work. When that work runs in this process —
-``run_dispatch._run_local`` starts a daemon thread — a container restart kills
+kicking off the work. When that work runs in this process ,
+``run_dispatch._run_local`` starts a daemon thread, a container restart kills
 the thread and nothing updates the database. The project is left in
 ``ANALYZING`` with nothing running.
 
@@ -15,13 +15,13 @@ What decides whether a run can be released is who was doing the work, and
 ``Job.celery_task_id`` records exactly that, because ``_mark_dispatched`` stores
 whatever ``dispatch_analyze`` returned:
 
-  * ``"local:<job_id>"`` — a daemon thread in this process. The restart killed
+  * ``"local:<job_id>"``, a daemon thread in this process. The restart killed
     it and it is never coming back, so release it.
-  * anything else — an Airflow ``dag_run_id``. Airflow is a separate service and
+  * anything else, an Airflow ``dag_run_id``. Airflow is a separate service and
     the DAG is probably still going; it will call back into ``/compute/*`` when
     it finishes. Marking that project FAILED would destroy a live run, so leave
     it alone.
-  * ``NULL`` — the process died between ``_new_job`` and ``_mark_dispatched``, so
+  * ``NULL``, the process died between ``_new_job`` and ``_mark_dispatched``, so
     nothing was ever dispatched. Release it.
 
 That last case is why this cannot simply check ``airflow_enabled()``: even with
@@ -52,11 +52,10 @@ _LIVE_JOB_STATES = ("QUEUED", "RUNNING")
 #: Prefix `run_dispatch._run_local` puts in the dispatch id for in-process work.
 _LOCAL_PREFIX = "local:"
 
-
 def _failure_record(job, orchestrated: bool = False) -> str:
     """The same shape ``app.core.failures.classify`` produces, so
     ``_last_error`` serves it and the frontend renders it like any other
-    failure — message, stage, hint, and the detail behind a toggle.
+    failure, message, stage, hint, and the detail behind a toggle.
 
     ``orchestrated`` distinguishes the two ways a run can end up here. Both are
     "this run is not coming back", but telling a user the server restarted when
@@ -87,16 +86,14 @@ def _failure_record(job, orchestrated: bool = False) -> str:
         },
     })
 
-
 #: Airflow DAG-run states that mean the run is over, whatever the database says.
 _AIRFLOW_DONE = ("success", "failed", "skipped", "upstream_failed")
-
 
 def _airflow_finished(dag_run_id: str, dag_id: str) -> bool:
     """True when Airflow says this DAG run is over, or has never heard of it.
 
-    Only ever returns True on a definite answer. Anything else — Airflow
-    unreachable, an unexpected reply, a state this does not recognise — returns
+    Only ever returns True on a definite answer. Anything else, Airflow
+    unreachable, an unexpected reply, a state this does not recognise, returns
     False, because the two mistakes do not cost the same. Leaving a project
     stuck wastes somebody's afternoon; wrongly declaring a LIVE run dead
     destroys work in progress and writes a failure nobody can explain.
@@ -122,7 +119,6 @@ def _airflow_finished(dag_run_id: str, dag_id: str) -> bool:
     log.info("airflow reports dag run %s as %s; leaving it alone", dag_run_id, state)
     return False
 
-
 def _is_orphaned(job) -> bool:
     """True when this job's worker cannot possibly still be running.
 
@@ -131,7 +127,7 @@ def _is_orphaned(job) -> bool:
     that talks to another service.
     """
     if job is None:
-        return True                       # no job row at all — nothing can be running
+        return True                       # no job row at all, nothing can be running
     task_id = (job.celery_task_id or "").strip()
     if not task_id:
         return True                       # died before dispatch was recorded
@@ -157,7 +153,6 @@ def _is_orphaned(job) -> bool:
         log.info("airflow is not configured; treating dag run %s as dead", task_id)
         return True
     return _airflow_finished(task_id, dag_id_for_job(job.type))
-
 
 def recover_interrupted_runs(db) -> dict:
     """Mark runs the restart killed as FAILED. Returns a summary for the log.

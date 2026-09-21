@@ -1,8 +1,8 @@
 """SQLAlchemy models. These tables are where project state actually lives.
 
 The states a project moves through:
-  CREATED -> UPLOADED -> ANALYZING -> AWAITING_LABELS
-          -> LABELS_SUBMITTED -> FINALIZING -> COMPLETED
+  CREATED: UPLOADED: ANALYZING: AWAITING_LABELS
+: LABELS_SUBMITTED: FINALIZING: COMPLETED
 Any of the compute stages can go to FAILED instead.
 
 Two more states act as short-lived locks, held for one request and never across
@@ -31,10 +31,8 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.logging import naive_now
 from app.db.base import Base
 
-
 def _uuid() -> str:
     return str(uuid.uuid4())
-
 
 class Project(Base):
     __tablename__ = "projects"
@@ -56,9 +54,9 @@ class Project(Base):
     runs: Mapped[list | None] = mapped_column(JSON, default=list)
     share_hash: Mapped[str | None] = mapped_column(String, nullable=True)
     # Data-sharing consent, collected after finalize:
-    #   0 = no, or not answered yet (the default)
-    #   1 = yes, all data
-    #   2 = yes, but only the unlabelled Step 1 crown data
+    # 0 = no, or not answered yet (the default)
+    # 1 = yes, all data
+    # 2 = yes, but only the unlabelled Step 1 crown data
     consent: Mapped[int] = mapped_column(Integer, default=0)
     consent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     # Set by scripts/run_retention.py once a consent=2 project has been cut back
@@ -88,7 +86,6 @@ class Project(Base):
         passive_deletes=True
     )
 
-
 class Ortho(Base):
     __tablename__ = "orthos"
 
@@ -105,7 +102,6 @@ class Ortho(Base):
     size_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
 
     project: Mapped["Project"] = relationship(back_populates="orthos")
-
 
 class Job(Base):
     __tablename__ = "jobs"
@@ -137,14 +133,13 @@ class Job(Base):
 
     project: Mapped["Project"] = relationship(back_populates="jobs")
 
-
 class Run(Base):
     """One analysis run, and everything that belongs to it alone.
 
     Every field here used to live on ``Project``, which meant a project had
     exactly one run: starting a second overwrote the first's state, parameters
     and chosen k, and ``archive_current_run`` deleted its labels outright. The
-    species names the user assigned — the most expensive thing they produce —
+    species names the user assigned, the most expensive thing they produce ,
     did not survive the next run, so there was nothing to go back to and no way
     to finish an earlier run later.
 
@@ -154,8 +149,8 @@ class Run(Base):
     of them need to change. ``id`` is what the API and the frontend address,
     because a uuid cannot be mistaken for a different project's run 2.
 
-    This does not replace ``Project.state``. That stays as the lock — one
-    computing run per project — and as a mirror of the active run, so existing
+    This does not replace ``Project.state``. That stays as the lock, one
+    computing run per project, and as a mirror of the active run, so existing
     callers keep working. ``Run.state`` is the truth about a run. See
     ``services/run_registry.py``.
     """
@@ -203,7 +198,6 @@ class Run(Base):
     ortho: Mapped["Ortho | None"] = relationship()
     labels: Mapped[list["ClusterLabel"]] = relationship(back_populates="run")
 
-
 class ClusterLabel(Base):
     __tablename__ = "cluster_labels"
 
@@ -213,7 +207,7 @@ class ClusterLabel(Base):
     )
     #: Which run these labels describe. Nullable only so the ADD COLUMN
     #: migration can land on an existing table; every new row sets it.
-    #: Labels are no longer deleted when a run is archived — that deletion was
+    #: Labels are no longer deleted when a run is archived, that deletion was
     #: what made it impossible to come back and finish an earlier run.
     run_id: Mapped[str | None] = mapped_column(
         ForeignKey("runs.id", ondelete="CASCADE"), nullable=True, index=True

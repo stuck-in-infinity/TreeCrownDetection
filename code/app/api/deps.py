@@ -10,7 +10,6 @@ from app.db.session import get_db
 # the ledger writes for an unattributed call. Never recorded as an owner.
 _PLACEHOLDER_IDENTITIES = {"", "default", "system", "anonymous"}
 
-
 def service_caller(
     request: Request,
     x_service_token: str | None = Header(default=None),
@@ -39,7 +38,6 @@ def service_caller(
         return not named_user
     return False
 
-
 def attribute_to_owner(request: Request | None, project) -> None:
     """Record whose project this request acted on, for the activity ledger.
 
@@ -60,7 +58,6 @@ def attribute_to_owner(request: Request | None, project) -> None:
             request.state.audit_email = owner
     except Exception:
         pass
-
 
 def require_api_key(
     x_api_key: str | None = Header(default=None),
@@ -94,6 +91,18 @@ def require_api_key(
         )
     return x_user_email or "default"
 
+def signed_in(x_user_email: str | None, x_api_key: str | None = None) -> str:
+    if settings.api_key and x_api_key != settings.api_key:
+        raise HTTPException(
+            status_code=401,
+            detail={"code": "UNAUTHENTICATED", "message": "Invalid or missing API key"},
+        )
+    if settings.auth_enabled and not x_user_email:
+        raise HTTPException(
+            status_code=401,
+            detail={"code": "UNAUTHENTICATED", "message": "Google sign-in required"},
+        )
+    return x_user_email or "default"
 
 def require_user(
     x_user_email: str | None = Header(default=None, alias="X-User-Email"),
@@ -110,8 +119,8 @@ def require_user(
 
     The ``?user=`` query parameter is the same identity by another route, for
     the requests that cannot carry a header at all. A plot, a crown thumbnail
-    and a download link are fetched by the browser itself — ``<img src>`` and
-    ``<a href>`` send no custom headers — so those URLs have to name the caller
+    and a download link are fetched by the browser itself, ``<img src>`` and
+    ``<a href>`` send no custom headers, so those URLs have to name the caller
     in the URL or arrive anonymous. Anonymous meant falling back to "the newest
     project owned by ``default``", and nobody owns projects as ``default`` once
     anyone has signed in, so every image on the review screen 404'd. The header
@@ -136,7 +145,6 @@ def require_user(
         )
     return email
 
-
 def require_service_token(
     x_service_token: str | None = Header(default=None),
 ) -> str:
@@ -151,7 +159,6 @@ def require_service_token(
             detail={"code": "UNAUTHENTICATED", "message": "Invalid or missing service token"},
         )
     return "system"
-
 
 def resolve_project(
     db: Session,
@@ -186,7 +193,6 @@ def resolve_project(
             detail={"code": "FORBIDDEN", "message": "Forbidden", "project_id": project_id},
         )
     return project
-
 
 def get_project(
     project_id: str | None = None,

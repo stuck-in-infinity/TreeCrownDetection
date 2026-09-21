@@ -4,7 +4,7 @@ detection overlay.
 
 Every route here takes an optional ``run`` query parameter and defaults to the
 project's active run. Without it, opening run 3 while run 5 is the newest one
-showed run 5's plots and run 5's crowns under run 3's heading — the pictures
+showed run 5's plots and run 5's crowns under run 3's heading, the pictures
 quietly disagreed with the run you thought you were looking at.
 """
 import csv
@@ -28,10 +28,8 @@ log = get_logger("app.clustering")
 
 _REVIEW_STATES = {"AWAITING_LABELS", "LABELS_SUBMITTED", "FINALIZING", "COMPLETED"}
 
-
 def _run(project) -> int:
     return getattr(project, "current_run", 1) or 1
-
 
 def _resolve_run(db, project, run: int | None) -> int:
     """Turn the ``run`` query parameter into a run number we know exists.
@@ -61,10 +59,8 @@ def _resolve_run(db, project, run: int | None) -> int:
         })
     return run
 
-
 def _clustering_dir(project, run: int) -> str:
     return os.path.join(project_paths(project.id, run)["step1_output"], "clustering")
-
 
 def _run_state(db, project, run: int) -> str:
     """The state of one run, falling back to the project's own.
@@ -74,7 +70,6 @@ def _run_state(db, project, run: int) -> str:
     """
     row = run_registry.get_run(db, project, run)
     return row.state if row is not None else project.state
-
 
 def _require_review(db, project, run: int) -> None:
     """Return 425 NOT_READY until THIS run has produced its clustering output.
@@ -93,7 +88,6 @@ def _require_review(db, project, run: int) -> None:
                     "AWAITING_LABELS — run the analysis first, or pick a run that "
                     "already has results",
             "details": {"run": run, "state": state}})
-
 
 def build_clustering_payload(request: Request, project, run: int | None = None,
                              run_row=None) -> dict:
@@ -162,7 +156,6 @@ def build_clustering_payload(request: Request, project, run: int | None = None,
     payload.update(analyze_asset_fields(project))
     return payload
 
-
 @router.get("/projects/{project_id}/clustering")
 @router.get("/project/clustering")
 def clustering_overview(request: Request, run: int | None = None,
@@ -183,7 +176,6 @@ def clustering_overview(request: Request, run: int | None = None,
         request, project, n, run_registry.get_run(db, project, n)
     )
 
-
 @router.get("/projects/{project_id}/clustering/k-selection.png")
 @router.get("/project/clustering/k-selection.png")
 def k_selection_png(run: int | None = None, project=Depends(get_project),
@@ -201,7 +193,6 @@ def k_selection_png(run: int | None = None, project=Depends(get_project),
             "details": {"run": n}})
     return FileResponse(f, media_type="image/png")
 
-
 @router.get("/projects/{project_id}/clustering/{k}/tsne.png")
 @router.get("/project/clustering/{k}/tsne.png")
 def tsne_png(k: int, run: int | None = None, project=Depends(get_project),
@@ -218,7 +209,6 @@ def tsne_png(k: int, run: int | None = None, project=Depends(get_project),
                     "one you asked for",
             "details": {"run": n, "k": k}})
     return FileResponse(f, media_type="image/png")
-
 
 @router.get("/projects/{project_id}/clustering/{k}/clusters")
 @router.get("/project/clustering/{k}/clusters")
@@ -270,7 +260,6 @@ def clusters_overview(
         )
     return {"project_id": project.id, "run": n, "k": k,
             "order": order, "clusters": out}
-
 
 @router.get("/projects/{project_id}/crowns/{image_name}")
 @router.get("/project/crowns/{image_name}")
@@ -328,7 +317,6 @@ def crown_png(image_name: str, run: int | None = None, k: int | None = None,
             "details": {"run": n, "crown": safe}})
     return StreamingResponse(png, media_type="image/png", headers=headers)
 
-
 @router.get("/projects/{project_id}/detection/overlay.png")
 @router.get("/project/detection/overlay.png")
 def overlay_png(run: int | None = None, project=Depends(get_project),
@@ -351,7 +339,6 @@ def overlay_png(run: int | None = None, project=Depends(get_project),
             "details": {"run": n}})
     return FileResponse(f, media_type="image/png")
 
-
 # Helpers.
 def _run_files_url(project, run: int) -> str | None:
     """FileBrowser link to one run's folder, or None when it is switched off."""
@@ -364,7 +351,6 @@ def _run_files_url(project, run: int) -> str | None:
         log.warning("could not build a FileBrowser link project=%s run=%s",
                     project.id, run, exc_info=True)
     return None
-
 
 def _cluster_members(cdir: str, k: int):
     """Which crowns are in each cluster, most typical first.
@@ -419,7 +405,6 @@ def _cluster_members(cdir: str, k: int):
         out[ci] = [(f, None) for f in
                    sorted(x for x in os.listdir(cf) if x.lower().endswith(".tif"))]
     return (out, "filename") if out else (None, None)
-
 
 
 def _read_table(path: str) -> list[dict]:

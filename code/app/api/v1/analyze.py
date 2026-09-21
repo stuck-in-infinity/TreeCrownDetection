@@ -19,6 +19,7 @@ from app.api.deps import (
     require_service_token,
     resolve_project,
     service_caller,
+    signed_in,
 )
 from app.api.v1.clustering import build_clustering_payload
 from app.api.v1.runs import (
@@ -47,23 +48,16 @@ log = get_logger("app.api")
 _ANALYZE_OK = {"UPLOADED", "ANALYZING", "AWAITING_LABELS", "LABELS_SUBMITTED", "COMPLETED", "FAILED"}
 
 
-def _files_url(project) -> str | None:
-    hash_ = getattr(project, "share_hash", None)
-    if not hash_:
-        return None
-    try:
-        from app.services.filebrowser_client import filebrowser_enabled, share_url
-        if filebrowser_enabled():
-            return share_url(hash_)
-    except Exception:
-        pass
-    return None
-
-
 def _analyze_payload(request: Request, project) -> dict:
-    payload = build_clustering_payload(request, project)
-    payload.update(analyze_asset_fields(project))
-    payload["files_url"] = _files_url(project)
+    from sqlalchemy.orm import object_session
+
+    from app.services import run_registry
+
+    n = project.current_run or 1
+    db = object_session(project)
+    run_row = run_registry.get_run(db, project, n) if db is not None else None
+    payload = build_clustering_payload(request, project, run=n, run_row=run_row)
+    payload.update(analyze_asset_fields(project, n))
     return payload
 
 
@@ -76,6 +70,8 @@ def drone_api(
     _svc: str = Depends(require_service_token),
     service: bool = Depends(service_caller),
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    x_user_email: str | None = Header(default=None, alias="X-User-Email"),
+    x_api_key: str | None = Header(default=None),
 ):
     if not body or not body.project_id or not body.action:
         raise HTTPException(400, {
@@ -91,6 +87,10 @@ def drone_api(
             "hint": "use action=analyze to detect and cluster, action=finalize to export",
             "project_id": body.project_id,
         })
+
+    if not body.execution_id:
+        user = signed_in(x_user_email, x_api_key)
+        service = False
 
     # Hand the work to Airflow when it is configured. An execution_id in the
     # body means Airflow is already calling us back to run the pipeline, so in

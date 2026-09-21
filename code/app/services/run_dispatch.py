@@ -20,11 +20,9 @@ import threading
 from app.core.settings import settings
 from app.services.airflow_client import airflow_enabled, trigger_dag
 
-
 def dag_id_for_job(job_type: str) -> str:
     """The DAG id this job type is dispatched to, from TCP_*_DAG_ID in .env."""
     return settings.finalize_dag_id if job_type == "finalize" else settings.analyze_dag_id
-
 
 def _conf(project_id: str, job_id: str, run: int | None = None) -> dict:
     conf = {"project_id": project_id, "job_id": job_id}
@@ -32,13 +30,12 @@ def _conf(project_id: str, job_id: str, run: int | None = None) -> dict:
         conf["run"] = run
     return conf
 
-
 def _run_local(task_name: str, project_id: str, job_id: str, run: int | None = None) -> str:
     """Start the run in the background and return at once.
 
     The thread only waits: the run itself happens in its own process, which
     holds its own wall-clock deadline (services/run_guard.py). A thread could
-    not do that — nothing can kill one, and the pipeline has no cancellation
+    not do that, nothing can kill one, and the pipeline has no cancellation
     point to poll.
     """
 
@@ -48,7 +45,7 @@ def _run_local(task_name: str, project_id: str, job_id: str, run: int | None = N
         try:
             run_guarded(task_name, project_id, job_id, run)
         except Exception:
-            # Nothing above this thread to report to — the trigger returned
+            # Nothing above this thread to report to, the trigger returned
             # long ago. Whatever happened is already on the Job and the run
             # row, written by the task's own _fail() or, for a run that had to
             # kill its own process, by run_guarded.
@@ -57,12 +54,10 @@ def _run_local(task_name: str, project_id: str, job_id: str, run: int | None = N
     threading.Thread(target=_target, name=f"{task_name}:{job_id}", daemon=True).start()
     return f"local:{job_id}"
 
-
 def dispatch_analyze(project_id: str, job_id: str, run: int | None = None) -> str:
     if airflow_enabled():
         return trigger_dag(dag_id_for_job("analyze"), _conf(project_id, job_id, run))
     return _run_local("job_a_analyze", project_id, job_id, run)
-
 
 def dispatch_finalize(project_id: str, job_id: str, run: int | None = None) -> str:
     if airflow_enabled():

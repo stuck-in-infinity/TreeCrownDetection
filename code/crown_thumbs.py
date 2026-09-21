@@ -14,7 +14,6 @@ would break that.
 import io
 import os
 
-
 def tif_to_png_bytes(path: str, max_side: int | None = None):
     """Render one crown GeoTIFF as PNG bytes, or None if it cannot be read.
 
@@ -25,7 +24,7 @@ def tif_to_png_bytes(path: str, max_side: int | None = None):
 
     Returns a ``BytesIO`` positioned at the start, ready to stream or write.
     Returns None when the imaging libraries are missing or the file will not
-    read — the caller decides whether that is fatal.
+    read, the caller decides whether that is fatal.
     """
     try:
         import numpy as np
@@ -55,12 +54,11 @@ def tif_to_png_bytes(path: str, max_side: int | None = None):
     except Exception:
         return None
 
-
 def write_thumbnail(src_tif: str, dst_png: str, max_side: int = 200) -> bool:
     """Render ``src_tif`` to ``dst_png``. True if the file is now there.
 
-    Never raises. A thumbnail is a convenience — the API falls back to rendering
-    on demand — so a crown that will not convert must not take down the run that
+    Never raises. A thumbnail is a convenience, the API falls back to rendering
+    on demand, so a crown that will not convert must not take down the run that
     produced it.
     """
     try:

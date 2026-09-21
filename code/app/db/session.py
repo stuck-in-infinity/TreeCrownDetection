@@ -29,10 +29,8 @@ ACTIVE_BACKEND = "sqlite"
 ACTIVE_URL = ""
 FELL_BACK = False
 
-
 def _is_sqlite_url(url: str) -> bool:
     return url.startswith("sqlite")
-
 
 def is_sqlite() -> bool:
     """Whether the active engine is SQLite.
@@ -41,11 +39,9 @@ def is_sqlite() -> bool:
     """
     return ACTIVE_BACKEND == "sqlite"
 
-
 #: Whether the WAL outcome has already been reported. The pragma runs on every
 #: new connection; the log line is worth exactly one appearance.
 _wal_reported = False
-
 
 def _sqlite_pragmas(dbapi_conn, _record):
     """WAL so readers never block the writer (and vice versa).
@@ -65,7 +61,7 @@ def _sqlite_pragmas(dbapi_conn, _record):
 
     This used to be a bare ``try/finally``. The exception escaped the
     ``connect`` event, which meant EVERY connection failed, which meant the
-    service could not answer a single request — including the one that would
+    service could not answer a single request, including the one that would
     have told anybody why. A slower database is a far better outcome than a
     service that will not start, so a refusal here is caught, reported once,
     and the rollback journal is used instead.
@@ -111,13 +107,12 @@ def _sqlite_pragmas(dbapi_conn, _record):
     finally:
         cur.close()
 
-
 def _make_engine(url: str):
     """Build an engine and attach the setup that its backend needs."""
     if _is_sqlite_url(url):
         # ``timeout`` is the SQLite busy timeout: how long a writer waits for
         # another writer's lock before raising "database is locked". The
-        # default (5 s) is short for this workload — a worker thread commits
+        # default (5 s) is short for this workload, a worker thread commits
         # job progress throughout a run while API requests write concurrently.
         eng = create_engine(
             url,
@@ -145,12 +140,10 @@ def _make_engine(url: str):
         connect_args={"connect_timeout": 10, "application_name": "treecrown-api"},
     )
 
-
-# Created unbound, then pointed at an engine — see the module docstring.
+# Created unbound, then pointed at an engine, see the module docstring.
 SessionLocal = sessionmaker(autoflush=False, autocommit=False, future=True)
 
 engine = None
-
 
 def _activate(url: str, *, fell_back: bool = False):
     """Point the module, and everyone already holding SessionLocal, at ``url``."""
@@ -162,9 +155,7 @@ def _activate(url: str, *, fell_back: bool = False):
     SessionLocal.configure(bind=engine)
     return engine
 
-
 _activate(settings.resolved_database_url)
-
 
 def wait_for_db(timeout_s: int | None = None) -> bool:
     """Block until the database answers ``SELECT 1``. True if it did.
@@ -197,7 +188,6 @@ def wait_for_db(timeout_s: int | None = None) -> bool:
                 log.warning("database not ready yet, retrying: %s", exc)
             time.sleep(min(2.0, 0.25 * attempt))
 
-
 def _log_fallback_banner(url: str) -> None:
     from app.core.logging import get_logger
     get_logger("app.db").warning(
@@ -214,7 +204,6 @@ def _log_fallback_banner(url: str) -> None:
         url,
     )
 
-
 def get_db():
     """FastAPI dependency: yields a request-scoped DB session."""
     db = SessionLocal()
@@ -222,7 +211,6 @@ def get_db():
         yield db
     finally:
         db.close()
-
 
 def init_db() -> None:
     """Make the configured database usable, falling back to SQLite if allowed.
@@ -235,7 +223,7 @@ def init_db() -> None:
     ``_migrate_sqlite_*`` helpers, because a fallback boot has to work on a file
     nobody has migrated, possibly one that does not exist yet.
     """
-    from app.db import models  # noqa: F401  (register mappers)
+    from app.db import models  # noqa: F401 (register mappers)
     from app.db.base import Base
     from app.core.logging import get_logger
 
@@ -273,7 +261,6 @@ def init_db() -> None:
             "head' before serving traffic."
         )
 
-
 def _migrate_sqlite_add_columns() -> None:
     """Dev-convenience migration: add columns create_all won't add to an existing
     SQLite file. Keeps older treecrown.db files working without a wipe.
@@ -307,13 +294,12 @@ def _migrate_sqlite_add_columns() -> None:
                 if name not in existing:
                     conn.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}")
 
-
 def _migrate_sqlite_unique_job_key() -> None:
     """Add the jobs (project_id, celery_task_id) unique index to an existing DB.
 
     ``create_all`` only creates missing *tables*, so a table that predates the
     constraint never gets it. Historic double-runs may already hold duplicate
-    pairs, which would make CREATE UNIQUE INDEX fail — those losers get their
+    pairs, which would make CREATE UNIQUE INDEX fail, those losers get their
     key cleared first (the row itself is kept: it is run history). The keeper is
     the successful attempt, else the most recent.
     """

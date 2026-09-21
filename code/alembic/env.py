@@ -11,7 +11,7 @@ from sqlalchemy import engine_from_config, pool
 
 from app.core.settings import settings
 from app.db.base import Base
-from app.db import models  # noqa: F401  (imported for its side effect: registers the mappers)
+from app.db import models  # noqa: F401 (imported for its side effect: registers the mappers)
 
 config = context.config
 if config.config_file_name is not None:
@@ -22,7 +22,6 @@ target_metadata = Base.metadata
 _url = settings.resolved_database_url
 _is_sqlite = _url.startswith("sqlite")
 config.set_main_option("sqlalchemy.url", _url.replace("%", "%%"))
-
 
 def run_migrations_offline() -> None:
     context.configure(
@@ -35,7 +34,6 @@ def run_migrations_offline() -> None:
     )
     with context.begin_transaction():
         context.run_migrations()
-
 
 def run_migrations_online() -> None:
     connectable = engine_from_config(
@@ -54,7 +52,6 @@ def run_migrations_online() -> None:
         )
         with context.begin_transaction():
             context.run_migrations()
-
 
 if context.is_offline_mode():
     run_migrations_offline()

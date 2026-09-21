@@ -11,11 +11,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _SQLITE_DEFAULT = "sqlite:////data/treecrown.db"
 
-
 def _normalize_pg_scheme(url: str) -> str:
     """Pin Postgres URLs to the psycopg 3 driver.
 
-    A bare ``postgresql://`` resolves to psycopg2, which is not installed —
+    A bare ``postgresql://`` resolves to psycopg2, which is not installed ,
     and the failure is a ``ModuleNotFoundError`` raised while importing
     ``db/session.py``, i.e. before anything exists that could report why.
     """
@@ -23,7 +22,6 @@ def _normalize_pg_scheme(url: str) -> str:
         if url.startswith(bare):
             return "postgresql+psycopg://" + url[len(bare):]
     return url
-
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -192,7 +190,7 @@ class Settings(BaseSettings):
     # Browser origins allowed to call this API: comma-separated, or "*" for any.
     # "*" is the default so existing deployments keep working, but production
     # should name the origin the UI is served from, e.g.
-    #   TCP_CORS_ORIGINS=https://www.cse.iitd.ernet.in
+    # TCP_CORS_ORIGINS=https://www.cse.iitd.ernet.in
     # If the UI and API sit behind the same reverse proxy they share an origin,
     # the browser makes no cross-origin requests, and this value is unused.
     cors_origins: str = "*"
@@ -206,7 +204,7 @@ class Settings(BaseSettings):
     # render none and let the API convert every crown on demand instead.
     thumbs_per_cluster: int = 5
 
-    # ── start-up recovery ──────────────────────────────────────────────
+    # start-up recovery
     # On boot, release runs that a restart killed: a project left in ANALYZING
     # or FINALIZING with no live worker is marked FAILED so it can be re-run.
     # Only runs whose work was in THIS process are touched; a run handed to
@@ -218,11 +216,11 @@ class Settings(BaseSettings):
 
     # Retention and cleanup. The consent-aware retention pass runs from
     # scripts/run_retention.py under system cron, not from the Celery beat task,
-    # so leave cleanup_enabled False — the old beat job deletes without checking
+    # so leave cleanup_enabled False, the old beat job deletes without checking
     # consent. Consent values:
-    #   0 (no)              -> folder and DB row deleted
-    #   1 (yes, everything) -> kept, subject to retain_consent_all
-    #   2 (unlabelled only) -> keep through Step 1, delete step2/3/4 and labels
+    # 0 (no): folder and DB row deleted
+    # 1 (yes, everything): kept, subject to retain_consent_all
+    # 2 (unlabelled only): keep through Step 1, delete step2/3/4 and labels
     retention_days: int = 30       # retention window in days
     retain_consent_all: bool = True
     cleanup_enabled: bool = False  # old Celery beat task, off; the script drives it
@@ -238,10 +236,8 @@ class Settings(BaseSettings):
     log_max_bytes: int = 10_000_000  # TCP_LOG_MAX_BYTES, size cap before rotation
     log_backup_count: int = 5        # TCP_LOG_BACKUP_COUNT, rotated files kept
 
-
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
-
 
 settings = get_settings()

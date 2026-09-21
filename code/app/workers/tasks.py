@@ -1,9 +1,9 @@
 """Celery tasks wrapping the pipeline.
 
 Two jobs, with the user's labelling step in between:
-  * ``job_a_analyze``  — Step 0 detect (once per ortho) -> Step 1 crop, features,
+  * ``job_a_analyze`` , Step 0 detect (once per ortho): Step 1 crop, features,
     cluster, k-analysis, t-SNE. Ends with the project in ``AWAITING_LABELS``.
-  * ``job_b_finalize`` — Step 2 assign -> Step 3 validate (if ground truth) ->
+  * ``job_b_finalize``, Step 2 assign: Step 3 validate (if ground truth):
     Step 4 KMZ export. Ends with the project ``COMPLETED``.
 
 Heavy pipeline modules (torch, detectron2, detectree2, rasterio, ...) are
@@ -20,7 +20,7 @@ import traceback
 from datetime import datetime
 
 # Silence tqdm progress bars in the worker. Redirected to a file, tqdm's \r
-# updates don't overwrite — every tick is saved, bloating run logs ~10x and
+# updates don't overwrite, every tick is saved, bloating run logs ~10x and
 # drowning the real signal. tqdm reads TQDM_DISABLE at import, so this must run
 # BEFORE the lazy pipeline imports (predict / tree_crown_pipeline / detectree2)
 # inside the tasks. setdefault so an explicit env override still wins.
@@ -36,7 +36,7 @@ from app.workers.celery_app import celery_app
 
 log = get_logger("app.pipeline")
 
-# ── warm model caches (one per worker process) ─────────────────────────
+# warm model caches (one per worker process)
 _PREDICTORS: dict = {}
 _DINOV2: dict = {}
 # Building a predictor / DINOv2 allocates GPU memory, so the cache MISS path has
@@ -44,11 +44,10 @@ _DINOV2: dict = {}
 # build the model and the second allocation can OOM the device.
 _MODEL_LOCK = threading.Lock()
 
-
 class _ThreadRoutedStream:
     """Process-global stdout/stderr proxy that routes writes per thread.
 
-    Jobs run concurrently *in this process* — local dispatch uses a daemon
+    Jobs run concurrently *in this process*, local dispatch uses a daemon
     thread, and ``/compute/*`` calls ``.apply()`` inside the request threadpool.
     ``contextlib.redirect_stdout`` cannot be used for per-job log capture there:
     it swaps the process-global ``sys.stdout``, so overlapping jobs interleave
@@ -102,10 +101,8 @@ class _ThreadRoutedStream:
     def fileno(self):
         return self._real.fileno()
 
-
 _STREAM_LOCK = threading.Lock()
 _PROXIES: dict = {}
-
 
 def _proxy(name: str) -> _ThreadRoutedStream:
     """Install (once) and return the routed proxy for 'stdout' / 'stderr'.
@@ -123,7 +120,6 @@ def _proxy(name: str) -> _ThreadRoutedStream:
             setattr(sys, name, proxy)
         return proxy
 
-
 def _get_predictor(
     model_path: str,
     conf_threshold: float,
@@ -135,7 +131,7 @@ def _get_predictor(
     Every argument here is baked into the predictor at construction time, so
     every argument must appear in the cache key. Leaving one out would make
     two projects with different values silently share whichever predictor was
-    built first — wrong results, no error, nothing in the logs.
+    built first, wrong results, no error, nothing in the logs.
     """
     import predict  # lazy
 
@@ -159,7 +155,6 @@ def _get_predictor(
             )
         return _PREDICTORS[key]
 
-
 def _get_dinov2(model_name: str, img_size: int):
     import tree_crown_pipeline as tcp  # lazy
 
@@ -172,13 +167,11 @@ def _get_dinov2(model_name: str, img_size: int):
             _DINOV2[key] = tcp.build_dinov2(model_name, img_size)
         return _DINOV2[key]
 
-
 def _set_job(db, job, **fields):
     for k, v in fields.items():
         setattr(job, k, v)
     db.add(job)
     db.commit()
-
 
 def _set_state(db, project, state, error=None, run=None):
     """Record an outcome for ONE run, then re-derive the project's state.
@@ -186,7 +179,7 @@ def _set_state(db, project, state, error=None, run=None):
     This used to write ``project.state`` directly, which could only ever
     describe the active run: finalize an older run and the project ended up
     reporting that run's outcome instead of its own. ``run_registry`` owns both
-    halves now — the run row is the truth, the project's state is derived from
+    halves now, the run row is the truth, the project's state is derived from
     the rows.
     """
     from app.services import run_registry
@@ -199,11 +192,9 @@ def _set_state(db, project, state, error=None, run=None):
     run_registry.set_run_state(db, project, n, state, error=error)
     db.refresh(project)
 
-
 def _job_tracking_id(job, request_id: str | None) -> str | None:
     """Preserve an orchestrator idempotency key once the API has recorded it."""
     return job.celery_task_id or request_id
-
 
 def _read_recommended_k(dir_cluster: str):
     path = os.path.join(dir_cluster, "k_recommendation_table.csv")
@@ -218,9 +209,8 @@ def _read_recommended_k(dir_cluster: str):
         return None
 
 
-# ═══════════════════════════════════════════════════════════════════════
-# JOB A — detect + cluster  (ends at AWAITING_LABELS)
-# ═══════════════════════════════════════════════════════════════════════
+# JOB A, detect + cluster (ends at AWAITING_LABELS)
+
 @celery_app.task(name="app.workers.tasks.job_a_analyze", bind=True)
 def job_a_analyze(self, project_id: str, job_id: str, run: int | None = None):
     db = SessionLocal()
@@ -248,7 +238,7 @@ def job_a_analyze(self, project_id: str, job_id: str, run: int | None = None):
         # THIS run so a stale feature/cluster cache cannot leak in. Sibling runs
         # (run_1, run_2, ...) are untouched.
         #
-        # SAFETY — every key below is run-scoped (work/run_<n>/...). In
+        # SAFETY, every key below is run-scoped (work/run_<n>/...). In
         # particular "ortho" is work/run_<n>/ortho, the per-run WORKING COPY the
         # pipeline reads, NOT "input_ortho" (input/ortho), the shared upload
         # library that now persists across runs and holds files no upload path
@@ -269,13 +259,13 @@ def job_a_analyze(self, project_id: str, job_id: str, run: int | None = None):
                  log_path=logf.name)
         _set_state(db, project, "ANALYZING", run=run)
 
-        cfg = build_config(project)
+        cfg = build_config(project, run)
 
         with _redirect(logf):
             import predict
             import tree_crown_pipeline as tcp
 
-            # ── Step 0: detection, on THIS RUN'S ortho ──────────────────
+            # Step 0: detection, on THIS RUN'S ortho
             _set_job(db, job, current_stage="detecting", progress=0.05)
             ortho_dir = paths["input_ortho"]
             stems = _run_ortho_stems(project, ortho_dir)
@@ -310,11 +300,11 @@ def job_a_analyze(self, project_id: str, job_id: str, run: int | None = None):
                 # actually recorded, and end_to_end_pipeline.py (the CLI running
                 # the same pipeline) has always used the original here. The two
                 # rasters share a CRS and extent, so the same polygons cut the
-                # same ground either way — only the pixel detail differs.
+                # same ground either way, only the pixel detail differs.
                 _place_run_ortho(src_ortho, os.path.join(paths["ortho"], f"{stem}.tif"))
                 shutil.copy(gj, os.path.join(paths["polygons"], f"{stem}.geojson"))
 
-            # ── Step 1: crop -> features -> cluster -> analyse -> t-SNE ─
+            # Step 1: crop: features: cluster: analyse: t-SNE
             _set_job(db, job, current_stage="cropping", progress=0.35)
             crowns_dir = tcp.step1_crop_crowns(cfg)
 
@@ -354,9 +344,8 @@ def job_a_analyze(self, project_id: str, job_id: str, run: int | None = None):
         db.close()
 
 
-# ═══════════════════════════════════════════════════════════════════════
-# JOB B — assign + validate + export  (ends at COMPLETED)
-# ═══════════════════════════════════════════════════════════════════════
+# JOB B, assign + validate + export (ends at COMPLETED)
+
 @celery_app.task(name="app.workers.tasks.job_b_finalize", bind=True)
 def job_b_finalize(self, project_id: str, job_id: str, run: int | None = None):
     db = SessionLocal()
@@ -388,7 +377,7 @@ def job_b_finalize(self, project_id: str, job_id: str, run: int | None = None):
                  log_path=logf.name)
         _set_state(db, project, "FINALIZING", run=run)
 
-        cfg = build_config(project)
+        cfg = build_config(project, run)
         # Scoped to THIS run. A project now keeps every run's labels, so an
         # unscoped query would export run 4's species map into run 2's folder.
         from app.services import run_registry
@@ -422,7 +411,7 @@ def job_b_finalize(self, project_id: str, job_id: str, run: int | None = None):
             try:
                 from app.services.stac import write_stac_item
 
-                write_stac_item(project, chosen_k=cfg.CHOSEN_K)
+                write_stac_item(project, chosen_k=cfg.CHOSEN_K, run=run)
             except Exception:  # pragma: no cover - best effort
                 log.warning("STAC item not written", exc_info=True)
 
@@ -438,12 +427,11 @@ def job_b_finalize(self, project_id: str, job_id: str, run: int | None = None):
             logf.close()
         db.close()
 
-
-# ── helpers ────────────────────────────────────────────────────────────
+# helpers
 def _redirect(logf):
     """Capture this thread's stdout/stderr into ``logf`` for the duration.
 
-    Thread-scoped, not process-scoped — see ``_ThreadRoutedStream``. Restores
+    Thread-scoped, not process-scoped, see ``_ThreadRoutedStream``. Restores
     whatever sink the thread had before, so nesting is safe and a concurrent
     job's capture is never disturbed.
     """
@@ -461,9 +449,8 @@ def _redirect(logf):
 
     return _capture()
 
-
 def _run_ortho_stems(project, ortho_dir: str) -> list[str]:
-    """The ortho stem(s) this run must process — normally exactly one.
+    """The ortho stem(s) this run must process, normally exactly one.
 
     A project's ``input/ortho`` directory is now a LIBRARY that persists across
     runs, so listing the directory (what this used to do) would make every run
@@ -472,11 +459,11 @@ def _run_ortho_stems(project, ortho_dir: str) -> list[str]:
 
     The fallbacks exist for runs that predate the pin, and only for those:
 
-    * pin present and its file exists -> that one file. This is the only path a
+    * pin present and its file exists: that one file. This is the only path a
       run triggered through the current API can take.
-    * no pin, exactly one registered ortho -> that one. Every project created
+    * no pin, exactly one registered ortho: that one. Every project created
       before this change, including one mid-run when the code was deployed.
-    * no pin and several -> every registered ortho, the pre-library behaviour.
+    * no pin and several: every registered ortho, the pre-library behaviour.
       Unreachable through the API (the trigger rejects an ambiguous request with
       400 ORTHO_SELECTION_REQUIRED); kept so an in-flight legacy job cannot
       crash on a rule that did not exist when it was queued.
@@ -507,14 +494,13 @@ def _run_ortho_stems(project, ortho_dir: str) -> list[str]:
     usable = sorted(s for s in registered if _present(s))
     if usable:
         return usable
-    # No DB rows at all (or none on disk) — fall back to the directory, which is
+    # No DB rows at all (or none on disk), fall back to the directory, which is
     # exactly what this function replaced.
     return sorted(
         os.path.splitext(f)[0]
         for f in os.listdir(ortho_dir)
         if f.lower().endswith((".tif", ".tiff"))
     )
-
 
 def _place_run_ortho(src: str, dst: str) -> None:
     """Give the run its own view of the full-resolution orthomosaic at ``dst``.
@@ -523,7 +509,7 @@ def _place_run_ortho(src: str, dst: str) -> None:
     project accumulates one per run. The link is as good as a copy here: an
     upload always lands on a fresh name (`_unique_stem`), so nothing ever
     rewrites a library file in place, and deleting the library entry only drops
-    one name — the run keeps reading the same bytes it started with. Falls back
+    one name, the run keeps reading the same bytes it started with. Falls back
     to a real copy when the link cannot be made, which is what happens if
     input/ and work/ ever end up on different filesystems.
     """
@@ -534,7 +520,6 @@ def _place_run_ortho(src: str, dst: str) -> None:
     except OSError:
         shutil.copy(src, dst)
 
-
 def _find_ortho(ortho_dir: str, stem: str) -> str:
     for ext in (".tif", ".tiff"):
         cand = os.path.join(ortho_dir, stem + ext)
@@ -542,14 +527,12 @@ def _find_ortho(ortho_dir: str, stem: str) -> str:
             return cand
     raise FileNotFoundError(f"Ortho for stem '{stem}' not found in {ortho_dir}")
 
-
 def _has_ground_truth(gt_dir: str) -> bool:
     if not os.path.isdir(gt_dir):
         return False
     return any(
         os.path.isdir(os.path.join(gt_dir, d)) for d in os.listdir(gt_dir)
     )
-
 
 def _fail(db, project_id: str, job_id: str, exc: Exception, run: int | None = None):
     tb = traceback.format_exc()
@@ -575,13 +558,13 @@ def _fail(db, project_id: str, job_id: str, exc: Exception, run: int | None = No
     )
     if job:
         # Also append the traceback to the run's own .log file so the log is
-        # self-sufficient for RCA — otherwise the file just stops mid-step and
+        # self-sufficient for RCA, otherwise the file just stops mid-step and
         # the error lives only in the DB Job.error column.
         _write_failure_to_log(getattr(job, "log_path", None), job_id, exc, tb)
         _set_job(db, job, state="FAILED", error=tb, finished_at=naive_now())
     if project:
         # Store the CLASSIFIED failure, not str(exc). Before this, every run
-        # failure — GPU out of memory, disk full, a truncated GeoTIFF — came
+        # failure, GPU out of memory, disk full, a truncated GeoTIFF, came
         # back as the same COMPUTE_FAILED code with whatever text the library
         # that raised happened to use. The raw text is still kept, inside
         # details, so nothing is lost by interpreting it.
@@ -589,7 +572,6 @@ def _fail(db, project_id: str, job_id: str, exc: Exception, run: int | None = No
         # active run is the right default and the only possibility for analyze.
         _set_state(db, project, "FAILED", run=run,
                    error=json.dumps(classify_failure(exc, stage=stage)))
-
 
 def _write_failure_to_log(log_path, job_id: str, exc: Exception, tb: str) -> None:
     """Append a clearly-marked failure block (timestamp + exception + traceback)

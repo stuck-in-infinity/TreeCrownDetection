@@ -16,20 +16,19 @@ from app.services import activity_log
 
 log = get_logger("app.request")
 
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     configure_logging()  # set up logging before anything else runs
     init_db()            # convenient in development; production uses Alembic
 
     # Release runs that a restart killed. A project left in ANALYZING has no way
-    # out through the API — analyze, reconfigure and delete are all refused from
-    # that state — so without this it stays unusable until someone edits the
+    # out through the API, analyze, reconfigure and delete are all refused from
+    # that state, so without this it stays unusable until someone edits the
     # database. Runs dispatched to Airflow are left alone; see the module.
     from app.db.session import SessionLocal
     from app.services.startup_recovery import recover_interrupted_runs
     # Give projects that predate the runs table their run rows, so the run
-    # picker has something to show. Safe to run twice — it skips projects that
+    # picker has something to show. Safe to run twice, it skips projects that
     # already have rows. Before recovery, so a run released below lands on a
     # real row.
     from app.services.run_backfill import backfill_runs
@@ -42,7 +41,6 @@ async def lifespan(app: FastAPI):
         _db.close()
 
     yield
-
 
 app = FastAPI(
     title="Tree-Crown Species Pipeline API",
@@ -71,12 +69,11 @@ app.add_middleware(
     expose_headers=["X-Request-Id"],
 )
 
-
 # Methods whose calls are recorded in the activity log, using the sign-in
 # headers the frontend sets. Every write is recorded.
 _AUDIT_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 
-# Reads are recorded too, but only the ones that hand data back — a download, an
+# Reads are recorded too, but only the ones that hand data back, a download, an
 # export or a crown image someone looked at. Recording every GET would bury the
 # ledger: pollState() hits /project and /project/runs/status every three seconds
 # for the whole length of a run, and neither says anything about who saw what.
@@ -89,7 +86,6 @@ _AUDIT_GET_MARKERS = (
     "/detection/overlay",   # the detection overlay
 )
 
-
 def _should_audit(method: str, path: str) -> bool:
     """Whether this call belongs in the activity ledger."""
     if not path.startswith("/api/"):
@@ -97,7 +93,6 @@ def _should_audit(method: str, path: str) -> bool:
     if method in _AUDIT_METHODS:
         return True
     return method == "GET" and any(m in path for m in _AUDIT_GET_MARKERS)
-
 
 def _caller_identity(request: Request) -> tuple[str | None, str | None]:
     """The signed-in email and user id behind this request, if any.
@@ -113,7 +108,6 @@ def _caller_identity(request: Request) -> tuple[str | None, str | None]:
     email = request.headers.get("X-User-Email") or request.query_params.get("user")
     return email, request.headers.get("X-User-Id")
 
-
 def _attributed_identity(request: Request) -> tuple[str | None, str | None]:
     """The identity an endpoint resolved for this request, if it set one.
 
@@ -125,7 +119,6 @@ def _attributed_identity(request: Request) -> tuple[str | None, str | None]:
     """
     email = getattr(request.state, "audit_email", None)
     return email, getattr(request.state, "audit_user_id", None)
-
 
 @app.middleware("http")
 async def audit_requests(request: Request, call_next):
@@ -191,12 +184,10 @@ async def audit_requests(request: Request, call_next):
         pass
     return response
 
-
 @app.get("/livez", tags=["meta"])
 def livez():
     """Report that the process is up. Used by the Docker healthcheck."""
     return {"status": "ok"}
-
 
 @app.get("/readyz", tags=["meta"])
 def readyz():
@@ -218,6 +209,5 @@ def readyz():
         "database": db_session.ACTIVE_BACKEND,
         "degraded": db_session.FELL_BACK,
     }
-
 
 app.include_router(api_router)

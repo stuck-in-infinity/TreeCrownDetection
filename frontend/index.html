@@ -1048,13 +1048,13 @@
 
   <div class="page-layout">
 
-    <!-- The pipeline steps, in the left column. -->
+    <!-- The pipeline steps, in the left column. -:
     <main class="pipeline-col">
 
-      <!-- Past runs, filled from GET /projects/mine and hidden when there are none. -->
+      <!-- Past runs, filled from GET /projects/mine and hidden when there are none. -:
       <section id="pastRuns" style="display:none"></section>
 
-      <!-- Step 1: create the project. -->
+      <!-- Step 1: create the project. -:
       <section>
         <h2>
           <span class="n">1</span> Name the project
@@ -1074,7 +1074,7 @@
         <div id="pinfo" class="note"></div>
       </section>
 
-      <!-- Step 2: add orthomosaics. -->
+      <!-- Step 2: add orthomosaics. -:
       <section>
         <h2>
           <span class="n">2</span> Upload the orthomosaics
@@ -1121,7 +1121,7 @@
         </div>
       </section>
 
-      <!-- Step 3: configure and start the analysis. -->
+      <!-- Step 3: configure and start the analysis. -:
       <section>
         <h2>
           <span class="n">3</span> Configure &amp; analyze
@@ -1250,7 +1250,7 @@
         <div id="clusterReview"></div>
       </section>
 
-      <!-- Step 4: label the clusters. -->
+      <!-- Step 4: label the clusters. -:
       <section>
         <!-- Which of the runs ready for names these names apply to. Shown
              only when there is more than one to choose between; filled by
@@ -1296,7 +1296,7 @@
         <div id="linfo" class="note"></div>
       </section>
 
-      <!-- Step 5: finalize and download the results. -->
+      <!-- Step 5: finalize and download the results. -:
       <section>
         <h2>
           <span class="n">5</span> Finalize &amp; export
@@ -1325,7 +1325,7 @@
 
     </main>
 
-    <!-- The FAQ, in the right column. -->
+    <!-- The FAQ, in the right column. -:
     <aside class="faq-col">
       <div class="faq-card">
         <div class="faq-header">
@@ -1606,7 +1606,7 @@
        #guide-page and is linked to rather than repeated. Everything here is
        named wt-. -->
   <div id="wt-page">
-    <!-- No header of its own, for the reason given in #guide-page. -->
+    <!-- No header of its own, for the reason given in #guide-page. -:
 
     <div class="wt-shell">
       <nav class="wt-rail" aria-label="Walkthrough stages">
@@ -1629,7 +1629,7 @@
           <span class="view-kicker">Guided tour</span>
           <h2 class="view-title">Pipeline Walkthrough</h2>
         </div>
-        <!-- The overview and the flow diagram. -->
+        <!-- The overview and the flow diagram. -:
         <section class="wt-hero" id="wt-intro" tabindex="-1">
           <span class="wt-kicker">Start to finish, with pictures</span>
           <h2>From one drone photo to a map you can open</h2>
@@ -1652,7 +1652,7 @@
           <div class="wt-flow" role="img"
                aria-label="Four steps in order: upload your drone image; the software finds the trees; you name the groups it found; you download the map. After that you open the map in QGIS or Google Earth Pro.">
             <svg viewBox="0 0 620 84" xmlns="http://www.w3.org/2000/svg">
-              <!-- The arrows between the boxes. -->
+              <!-- The arrows between the boxes. -:
               <g>
                 <path class="wt-flink" d="M108 42 H128"/><path class="wt-fdash" d="M108 42 H128"/>
                 <path class="wt-flink" d="M236 42 H256"/><path class="wt-fdash" d="M236 42 H256" style="animation-delay:.28s"/>
@@ -1710,7 +1710,7 @@
           </div>
         </section>
 
-        <!-- The step tour: the video. -->
+        <!-- The step tour: the video. -:
         <section class="wt-hero" id="wt-tour" tabindex="-1">
           <span class="wt-kicker">The actual UI, in order</span>
           <h2>Watch a real run, then read it back step by step</h2>
@@ -1746,7 +1746,7 @@
           </p>
         </section>
 
-        <!-- The step tour: the nine steps. -->
+        <!-- The step tour: the nine steps. -:
         <section class="wt-stage wts-sec" id="wt-steps" tabindex="-1">
           <button class="wt-head" type="button" aria-expanded="true" aria-controls="wts-body">
             <span class="wt-n" aria-hidden="true">&#9654;</span>
@@ -2005,7 +2005,7 @@
           step.
         </p>
 
-        <!-- Stage 1. -->
+        <!-- Stage 1. -:
         <section class="wt-stage" id="wt-s1" tabindex="-1">
           <button class="wt-head" type="button" aria-expanded="true" aria-controls="wt-b1">
             <span class="wt-n" aria-hidden="true">1</span>
@@ -2016,7 +2016,7 @@
           </button>
           
 
-        <!-- Where to go next. -->
+        <!-- Where to go next. -:
         <section class="wt-next" id="wt-next" tabindex="-1">
           <h2>Where to go next</h2>
           <p>
@@ -2397,7 +2397,7 @@ function requestLogin(){
   AUTH.client.requestAccessToken();   // shows the consent popup
 }
 
-// Continue as a guest — for testing only. This skips Google sign-in and uses a
+// Continue as a guest, for testing only. This skips Google sign-in and uses a
 // fixed placeholder identity, so the app still has something to send as
 // X-User-Email and X-User-Id for the audit log and project ownership. Every
 // guest shares this one identity, and therefore sees the same projects.
@@ -2445,7 +2445,7 @@ function log(msg){ /* no-op — server-side logging only */ }
 // X-User-Email and X-User-Id for its activity log and for project ownership.
 function headers(extra){ return Object.assign({}, authHeaders(), extra||{}); }
 
-// ── transport diagnosis ─────────────────────────────────────────────────
+//  transport diagnosis
 // Application errors are explained by the API, which is the only thing that
 // knows why it refused (see the note above ERROR text). Transport failures are
 // the exception, and necessarily so: when the request never arrives, or the
@@ -2454,10 +2454,10 @@ function headers(extra){ return Object.assign({}, authHeaders(), extra||{}); }
 // of it describes an application error.
 //
 // The cases are worth separating because they have completely different fixes,
-// and they all used to surface as the same thing — `HTTP 404`.
+// and they all used to surface as the same thing, `HTTP 404`.
 
 // Watchdog for a request that gets no answer. Right for a JSON call, which
-// either replies in milliseconds or is wedged — and WRONG for a body transfer,
+// either replies in milliseconds or is wedged, and WRONG for a body transfer,
 // which legitimately takes as long as the bytes take. A 161 MB ortho over a
 // LAN measured 35 s here; the next one over the same link blew past 60 s, the
 // browser aborted mid-body, and the server logged
@@ -2468,7 +2468,7 @@ const API_TIMEOUT_MS = (window.API_TIMEOUT_MS || 60000);
 
 // Uploads are watched for SILENCE, not for elapsed time: an upload that is
 // still moving bytes is healthy however long it runs, and one that has moved
-// none for this long is not going to recover. XHR is what makes this possible —
+// none for this long is not going to recover. XHR is what makes this possible ,
 // fetch() reports no upload progress, so with fetch the only measurable thing
 // is total duration, which is exactly the wrong thing to measure.
 const UPLOAD_STALL_MS = (window.UPLOAD_STALL_MS || 120000);
@@ -2491,13 +2491,13 @@ function transportError(kind, message, hint, extra){
 }
 
 // What we can work out about a fetch() rejection. The browser deliberately
-// refuses to say why — reporting "CORS" vs "no such host" vs "certificate
-// rejected" would leak cross-origin information — so it always throws the same
+// refuses to say why, reporting "CORS" vs "no such host" vs "certificate
+// rejected" would leak cross-origin information, so it always throws the same
 // opaque TypeError. We cannot ask it, but we can reason about the CONFIGURATION,
 // and configuration is what is actually wrong nearly every time.
 // One-line seams over `location`. `location.protocol` cannot be redefined in
 // Chrome, so without these the mixed-content branch below could only ever be
-// asserted by reading it — and the branch that never runs in a test is the one
+// asserted by reading it, and the branch that never runs in a test is the one
 // that is wrong in production.
 function pageIsHttps(){ return location.protocol === "https:"; }
 function pageOrigin(){ return location.origin; }
@@ -2596,7 +2596,7 @@ function foreignResponse(res, text){
 
 function preview(text){
   if(!text) return null;
-  // Strip tags so an nginx error page reads as one line, and keep it short —
+  // Strip tags so an nginx error page reads as one line, and keep it short ,
   // the point is recognising WHICH server answered, not reading its markup.
   const flat = String(text).replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
   return flat.slice(0, 200) || null;
@@ -2610,7 +2610,7 @@ async function api(path, opts={}){
   // legitimately takes minutes.
   //
   // `opts.timeoutMs` overrides the default for the calls that are legitimately
-  // slow — currently the Drive fetch, which blocks until the server has pulled
+  // slow, currently the Drive fetch, which blocks until the server has pulled
   // the whole file. Body uploads do not belong here at all: they go through
   // apiUpload(), which watches for a stall instead of a deadline.
   const timeoutMs = opts.timeoutMs || API_TIMEOUT_MS;
@@ -2645,7 +2645,7 @@ async function api(path, opts={}){
   if(!isJson){
     // Read it as text so the diagnosis can quote what actually came back.
     // Previously this branch assigned the Response OBJECT to `body`, so a
-    // non-JSON error became the string "HTTP 404" and — worse — a non-JSON
+    // non-JSON error became the string "HTTP 404" and, worse, a non-JSON
     // SUCCESS was returned to the caller as a Response and used as if it were
     // data. Both are fixed by refusing to guess.
     let text = "";
@@ -2682,15 +2682,15 @@ async function api(path, opts={}){
   return body;
 }
 
-// ── uploading a body ────────────────────────────────────────────────────
-// Same contract as api() — resolves to the parsed JSON, throws the same shaped
-// errors — but built on XMLHttpRequest rather than fetch, for one reason:
+//  uploading a body
+// Same contract as api(), resolves to the parsed JSON, throws the same shaped
+// errors, but built on XMLHttpRequest rather than fetch, for one reason:
 // upload progress. fetch() cannot report how far a request body has got, so
 // the only thing it lets you time is the whole transfer, and timing the whole
 // transfer is what broke multi-ortho uploads (see API_TIMEOUT_MS).
 //
-// With XHR the watchdog can ask the question that actually matters — "has this
-// moved recently?" — and the user gets a percentage instead of the word
+// With XHR the watchdog can ask the question that actually matters, "has this
+// moved recently?", and the user gets a percentage instead of the word
 // "uploading…" sitting still for two minutes on a 500 MB file.
 function apiUpload(path, formData, opts={}){
   const url = apiBase() + path;
@@ -2739,7 +2739,7 @@ function apiUpload(path, formData, opts={}){
 
     // foreignResponse() reads .status and .headers.get(), so hand it something
     // shaped like a Response. X-Request-Id is readable cross-origin because
-    // main.py puts it in the CORS expose_headers list — which is what lets
+    // main.py puts it in the CORS expose_headers list, which is what lets
     // foreignResponse tell "the API answered" from "a proxy answered".
     const asResponse = () => ({
       status: xhr.status,
@@ -2778,9 +2778,9 @@ function apiUpload(path, formData, opts={}){
   });
 }
 
-// ── rendering an error ──────────────────────────────────────────────────
+//  rendering an error
 // There is deliberately NO client-side dictionary of error text here. There
-// used to be: a map of code -> friendly sentence, which meant the browser
+// used to be: a map of code: friendly sentence, which meant the browser
 // showed a good message and everyone calling the API with curl got the terse
 // one. The explanation belongs to the API, not to one of its clients, so the
 // server now sends `message` and `hint` on every error and this page just
@@ -2803,7 +2803,7 @@ function explainWithHint(e){
 // quote. `explain` is still the one-liner for inline slots; this is for the
 // places where a run has actually died and the user needs somewhere to go.
 //
-// Order is deliberate — the sentence first, the remedy second, the forensics
+// Order is deliberate, the sentence first, the remedy second, the forensics
 // last and folded away. A user who can fix it themselves never has to read a
 // stack trace; an engineer who needs the trace can still get at it.
 function explainFull(e){
@@ -2840,14 +2840,14 @@ function rememberProject(p){
   return p;
 }
 
-// ── which project a call acts on ────────────────────────────────────────
+//  which project a call acts on
 // Every singular /api/v1/project* route resolves its project through
 // `get_project`, which reads an OPTIONAL `project_id` QUERY parameter and,
 // when it is absent, falls back to "this user's most recently updated
 // project" (api/deps.py, resolve_project).
 //
-// That fallback is right for exactly one situation — a session that has just
-// created its project and has no other — and quietly wrong for every other.
+// That fallback is right for exactly one situation, a session that has just
+// created its project and has no other, and quietly wrong for every other.
 // Reopen an earlier survey from "Your past runs" and an unpinned call lands on
 // the NEWEST project instead: an ortho uploaded into the wrong library, labels
 // submitted against the wrong run, and no error anywhere, because from the
@@ -2862,7 +2862,7 @@ function withPid(path){
 
 // Same job as withPid(), for the URLs the BROWSER fetches rather than fetch().
 // Plots, crown thumbnails and download links are <img src> and <a href>, and
-// neither can carry the X-User-Email header that api() adds — so the server saw
+// neither can carry the X-User-Email header that api() adds, so the server saw
 // them arrive with no project and no caller, fell back to "the newest project
 // owned by `default`", found none (projects are owned by the signed-in email,
 // or by guest@local.com) and answered 404 PROJECT_NOT_FOUND. Every plot and
@@ -2881,7 +2881,7 @@ function assetUrl(u){
   return out;
 }
 
-// The orthomosaic library is now editable for the life of the project — adding
+// The orthomosaic library is now editable for the life of the project, adding
 // one cannot disturb a run that already happened, because each run is pinned to
 // the single ortho it was launched with. The only time the controls close is
 // while a run (or another dataset edit) is actually in flight.
@@ -2889,7 +2889,7 @@ const BUSY_STATES = ["ANALYZING","FINALIZING","UPLOADING","DELETING"];
 function busyFromProject(p){ return !!p && BUSY_STATES.includes(p.state); }
 async function refreshProject(){
   // Only refresh the project the user is actively working on. Never auto-adopt
-  // the server's "latest project" on a fresh load — that silently reused the
+  // the server's "latest project" on a fresh load, that silently reused the
   // previous ortho and fired a run-2 instead of starting clean.
   if(!PID) return null;
   let p; try{ p=rememberProject(await api(withPid("/api/v1/project"))); }catch(e){ return null; }
@@ -2900,7 +2900,7 @@ async function refreshProject(){
   if(busy){ ln.style.display="block"; ln.innerHTML='<span class="warn">Run in progress.</span> The orthomosaic library can\'t change while a run is going &mdash; it reopens as soon as the run finishes.'; }
   else { ln.style.display="none"; }
   refreshOrthos(p);
-  // An ortho exists but the server detected no CRS -> the user must supply the
+  // An ortho exists but the server detected no CRS: the user must supply the
   // EPSG, otherwise build_config falls back to a hardcoded 32643 and the export
   // is silently georeferenced wrong.
   const needsEpsg = (p.orthos||[]).length > 0 && !p.source_epsg;
@@ -2920,13 +2920,28 @@ async function refreshProject(){
     ? `Current run: <b>${run}</b>${p.run_name?(" &middot; "+p.run_name):""}. Edit parameters and click <b>Run analysis</b> to open another run.`
     : "Run 1. After it finishes, edit parameters (or pick a different orthomosaic) and click <b>Run analysis</b> again to open run 2.";
   // Which runs are labellable changes whenever a run finishes, is labelled or
-  // is exported — all of which land here. Deliberately not awaited: the picker
+  // is exported, all of which land here. Deliberately not awaited: the picker
   // is a convenience and every caller wants the project back now.
   refreshLabelPicker();
+  refreshRunLists();
   return p;
 }
 
-// ══ Orthomosaic library (step 2) ════════════════════════════════════════
+async function refreshRunLists(){
+  const open = Object.keys(ORTHO_RUNS_OPEN).filter(id => ORTHO_RUNS_OPEN[id]);
+  Object.keys(ORTHO_RUNS).forEach(k => delete ORTHO_RUNS[k]);
+  if(!PID || !open.length) return;
+  await Promise.all(open.map(async id => {
+    try{
+      const data = await api(withPid("/api/v1/project/runs")
+                             + "&ortho_id=" + encodeURIComponent(id));
+      ORTHO_RUNS[id] = (data && data.runs) || [];
+    }catch(e){}
+  }));
+  renderOrthos();
+}
+
+//  Orthomosaic library (step 2)
 // ORTHOS mirrors GET /api/v1/project/orthomosaics; SELECTED_ORTHO is the id the
 // next run will use. Everything the user sees is rendered from these two.
 let ORTHOS = [];
@@ -2939,7 +2954,7 @@ const escAttr = (s) => esc(s).replace(/"/g, "&quot;");
 
 // Selection is per project, so a second project on the same browser never
 // inherits the first one's choice. Wrapped because localStorage throws in
-// private-mode Safari and when cookies are blocked — the app must still work,
+// private-mode Safari and when cookies are blocked, the app must still work,
 // it just forgets the choice on reload.
 const orthoKey = () => "tcp.selectedOrtho." + PID;
 function saveOrthoSel(){
@@ -2959,7 +2974,7 @@ function fmtBytes(n){
   return (n/(1024*1024*1024)).toFixed(1)+" GB";
 }
 
-// `project` is optional — passing the project we just fetched saves a round
+// `project` is optional, passing the project we just fetched saves a round
 // trip when refreshProject() is the caller.
 async function refreshOrthos(project){
   if(!PID){ ORTHOS=[]; ORTHO_USAGE=null; renderOrthos(); return; }
@@ -3002,8 +3017,8 @@ function renderOrthos(){
     const epsg = o.crs_epsg ? ("EPSG:"+o.crs_epsg) : (o.crs ? esc(o.crs) : "no CRS");
     const bands = o.bands ? (o.bands+" bands") : "";
     // The stem is what the server actually stored the file as. It is shown only
-    // when it differs from the uploaded name — i.e. when a name collided and was
-    // suffixed — so the user can see what it became.
+    // when it differs from the uploaded name, i.e. when a name collided and was
+    // suffixed, so the user can see what it became.
     const stemNote = (o.stem + ".tif") !== o.filename
       ? ' <span class="pill" title="stored as">'+esc(o.stem)+'</span>' : "";
     rows +=
@@ -3019,7 +3034,7 @@ function renderOrthos(){
     +   '<td class="ortho-meta">'+esc(fmtBytes(o.size_bytes))+'</td>'
     + '</tr>'
     // Second row, spanning the table: the runs already done on this
-    // orthomosaic. Collapsed, and only fetched when opened — most people
+    // orthomosaic. Collapsed, and only fetched when opened, most people
     // never look, and it is one request per ortho.
     + '<tr class="runs-row"><td colspan="5" class="runs-cell">'
     +   '<button type="button" class="runs-toggle" data-oid="'+escAttr(o.id)+'" '
@@ -3047,14 +3062,14 @@ function renderOrthos(){
   renderRunOrtho();
 }
 
-// The library shows checkboxes, but a run takes exactly ONE orthomosaic —
+// The library shows checkboxes, but a run takes exactly ONE orthomosaic ,
 // POST /runs/analyze carries a single ortho_id, and one run produces one KMZ.
 // So ticking a box unticks whatever was ticked before: the control looks like a
 // checkbox and behaves like a single pick. Unticking the current one is allowed
 // and simply leaves nothing selected; step 3 then says so rather than guessing.
 //
 // This is a deliberate deviation from native checkbox semantics, so the group
-// is labelled to say what it does — see #orthoLib's aria-describedby.
+// is labelled to say what it does, see #orthoLib's aria-describedby.
 function toggleOrtho(id, checked){
   SELECTED_ORTHO = checked ? id : null;
   if(checked) saveOrthoSel(); else clearOrthoSel();
@@ -3066,7 +3081,7 @@ function toggleOrtho(id, checked){
 // Kept: called from the row click target and from older call sites.
 function selectOrtho(id){ toggleOrtho(id, true); }
 
-/* ── runs done on one orthomosaic ────────────────────────────────────────
+/*  runs done on one orthomosaic
    A project accumulates runs, and a run keeps its own results, labels and
    outcome. This is where an earlier one is found again and picked up.
 
@@ -3096,7 +3111,7 @@ function loadActiveRun(){
 // The run steps 3-5 should act on: what the user picked, else the newest.
 function targetRun(){ return ACTIVE_RUN || CURRENT_RUN || 1; }
 
-/* ── choosing which run to label (step 4) ────────────────────────────────
+/*  choosing which run to label (step 4)
    A project can hold several runs sitting at "waiting for names" at once —
    the same orthomosaic analysed with different settings, kept side by side so
    the best one can be picked after looking at the crowns. Whichever the user
@@ -3130,16 +3145,18 @@ async function refreshLabelPicker(){
 
 function renderLabelPicker(){
   const el = $("labelPicker"); if(!el) return;
-  // can_label is the server's call, per run — same flag the step-2 list uses.
+  // can_label is the server's call, per run, same flag the step-2 list uses.
   const rows = (ALL_RUNS || []).filter(r => r.can_label)
                                .sort((a, b) => b.run - a.run);
   // One candidate is not a choice, and the banner already names it.
   if(rows.length < 2){ el.style.display = "none"; el.innerHTML = ""; return; }
 
   const cur = targetRun();
+  const waiting = rows.filter(r => r.state === "AWAITING_LABELS").length;
   let html = '<div class="run-pick-h">'
-    + rows.length + ' runs are ready for names. '
-    + 'The names below apply to the one selected here:</div>'
+    + rows.length + ' runs can be named'
+    + (waiting ? ' (' + waiting + ' still waiting for names)' : '')
+    + '. The names below apply to the one selected here:</div>'
     + '<div class="run-pick-row">';
   for(const r of rows){
     const on = r.run === cur;
@@ -3161,7 +3178,7 @@ function renderLabelPicker(){
 }
 
 // Switching from the picker must not throw the reader back up to step 2, which
-// is what openRun's scroll does — the whole point is that they are already in
+// is what openRun's scroll does, the whole point is that they are already in
 // step 4 and want to stay there.
 async function pickLabelRun(n){
   await openRun(n, {scroll:false});
@@ -3413,7 +3430,7 @@ async function createProject(){
 }
 
 // Both upload paths end here. The response is the serialized project, whose
-// `orthos` list now holds every ortho — so the new one is the entry that was
+// `orthos` list now holds every ortho, so the new one is the entry that was
 // not there before. That is also how the (possibly suffixed) final stem is
 // reported: the server decides it, the UI shows what it decided.
 function afterOrthoAdded(p, before, what){
@@ -3455,7 +3472,7 @@ function onOrthoPick(){
 }
 
 // Multi-file upload. The endpoint takes ONE file per request, so a batch is a
-// sequence of requests, not a parallel fan-out — sending 5 GB of TIFFs at once
+// sequence of requests, not a parallel fan-out, sending 5 GB of TIFFs at once
 // would also race the server's UPLOADING claim, which is per project and
 // exclusive: the second concurrent upload would simply be rejected.
 //
@@ -3567,18 +3584,46 @@ async function pollState(done,fail,stageEl){
   }
 }
 
+// Follow ONE run to its end. The project's state describes whichever run is
+// computing, so finalizing an older run leaves it reading the active run's
+// state instead. The run rows are per run, which is what this reads.
+async function pollRunState(n,done,fail,stageEl){
+  while(true){
+    await sleep(3000);
+    let st=null;
+    try{
+      const d=await api(withPid("/api/v1/project/runs?run="+encodeURIComponent(n)));
+      st=((d.runs||[])[0]||{}).state;
+    }catch(e){ continue; }
+    try{
+      const s=rememberProject(await api(withPid("/api/v1/project/runs/status")));
+      if(s.job&&s.job.current_stage) stageEl.textContent="stage: "+s.job.current_stage+"  ("+st+")";
+      else if(st) stageEl.textContent="run "+n+": "+(RUN_WORDS[st]||st);
+    }catch(e){}
+    if(done.includes(st)) return st;
+    if(fail.includes(st)){
+      // Carry the whole classified failure, as pollState does.
+      let le={};
+      try{ le=(await api(withPid("/api/v1/project")))?.last_error||{}; }catch(e){}
+      const err=new Error(le.message||("state "+st));
+      err.code=le.code||null; err.detail=le; err.failure=le;
+      throw err;
+    }
+  }
+}
+
 function numOrNull(id){ const v=$(id).value.trim(); return v===""?null:Number(v); }
 
 // img_size is a property of the chosen DINOv2 backbone (models.yaml), not a free
-// knob — read it off the selected option instead of asking the user.
+// knob, read it off the selected option instead of asking the user.
 function backboneImgSize(){
   const o=$("backbone").selectedOptions[0];
   return (o && +o.dataset.img) || 224;
 }
 
-// ── Client-side parameter validation ────────────────────────────────────
+//  Client-side parameter validation
 // Mirrors the bounds in PipelineParams (app/schemas/project.py). This is for
-// feel, not safety — the backend enforces the same rules, because params are
+// feel, not safety, the backend enforces the same rules, because params are
 // persisted onto the project and the API is also called by Airflow callbacks
 // and scripts that never touch this page. Keep the two in sync.
 const PARAM_BOUNDS = {
@@ -3616,7 +3661,7 @@ function paramErrors(){
 }
 
 // Live "how big will a tree look" readout, shown in the Advanced block.
-// pixels_per_metre = min_size_test / (tile_size + 2 * buffer) — GSD cancels.
+// pixels_per_metre = min_size_test / (tile_size + 2 * buffer), GSD cancels.
 function updateZoomNote(){
   const note = $("zoomNote"); if(!note) return;
   const foot = (+$("p_tile").value) + 2*(+$("p_buf").value);
@@ -3640,7 +3685,13 @@ function validateParams(){
   if(!running){
     const btn = $("btnAnalyze"); if(btn) btn.disabled = errs.length > 0;
     const info = $("ainfo");
-    if(info) info.innerHTML = errs.length ? '<span class="err">'+errs[0]+'</span>' : "";
+    // Only ever clear a message this function wrote. analyze() reports the
+    // run's outcome in the same element and then calls this from its finally,
+    // so clearing anything else wiped the result, and every failure message.
+    if(info){
+      if(errs.length){ info.innerHTML = '<span class="err">'+errs[0]+'</span>'; info.dataset.msg = "params"; }
+      else if(info.dataset.msg === "params"){ info.innerHTML = ""; delete info.dataset.msg; }
+    }
   }
   updateZoomNote();
   return errs;
@@ -3671,11 +3722,10 @@ async function analyze(){
     const klist=$("klist").value.split(",").map(s=>parseInt(s.trim(),10)).filter(n=>!isNaN(n));
     const body={
       project_id: PID,
-      action: "analyze",
       run_name: $("runname").value.trim()||null,
       model_key: $("modelKey").value||null,
       // Which ortho this run uses. Omitted when nothing is selected, which the
-      // server accepts only for a single-ortho project — the pre-library
+      // server accepts only for a single-ortho project, the pre-library
       // behaviour, unchanged.
       ortho_id: SELECTED_ORTHO||undefined,
       source_epsg: numOrNull("p_epsg"),
@@ -3697,33 +3747,27 @@ async function analyze(){
     if(ACTIVE_RUN) body.based_on_run = ACTIVE_RUN;
     ACTIVE_RUN = null; RUN_BANNER_ORTHO = null; saveActiveRun(); renderRunBanner();
     $("astage").textContent="triggering analyze…";
-    const triggered=await api("/api/v1/project/drone_api",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
-    let c=null;
-    if(triggered.dag_run_id){
-      const {dag_run_id}=triggered;
-      let pollCount=0;
-      while(!c){
-        await new Promise(r=>setTimeout(r,5000));
-        pollCount++;
-        $("astage").textContent=`polling Airflow… (${pollCount})`;
-        const s=await api(withPid(`/api/v1/project/drone_status/${dag_run_id}?action=analyze`));
-        $("astage").textContent=`DAG status: ${s.state||"running"} (poll ${pollCount})`;
-        if(s.state==="success"){ c=rememberProject(s); }
-        else if(s.state==="failed"){ throw new Error("DAG failed"); }
-      }
-    } else {
-      c=rememberProject(triggered);
-    }
+    // The asynchronous trigger: it returns as soon as the run is dispatched,
+    // to Airflow's drone_analyze DAG or to a local thread, and the run is then
+    // followed through the project's own state. Nothing here depends on which
+    // of the two it was.
+    const triggered=await api(withPid("/api/v1/project/runs/analyze"),
+      {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+    rememberProject(triggered);
+    const runNo=triggered.run||CURRENT_RUN||1;
+    $("astage").textContent="analysis started…";
+    await pollRunState(runNo,["AWAITING_LABELS"],["FAILED"],$("astage"));
+    const c=rememberProject(await api(withPid("/api/v1/project/clustering?run="+runNo)));
     let ahtml='<span class="ok">clustering ready</span> &middot; k available: '+(c.available_k||[]).join(", ")+' &middot; recommended: <b>'+c.recommended_k+'</b>';
     if(c.files_url) ahtml+=` &middot; <a href="${c.files_url}" target="_blank">Browse output files →</a>`;
-    $("ainfo").innerHTML=ahtml;
+    $("ainfo").innerHTML=ahtml; $("ainfo").dataset.msg="run";
     if(c.recommended_k){ $("ck").value=c.recommended_k; buildClusterRows(); }
     log("analyze done"); await refreshProject(); renderClusterReview(c);
   }catch(e){
-    $("ainfo").innerHTML=explainFull(e);
+    $("ainfo").innerHTML=explainFull(e); $("ainfo").dataset.msg="run";
     log("analyze failed: "+e.message);
     // ORTHO_NOT_FOUND / ORTHO_SELECTION_REQUIRED mean the client's view of the
-    // library is stale (another tab added one, say) — re-read it so the user
+    // library is stale (another tab added one, say), re-read it so the user
     // is choosing from what actually exists.
     if(e && (e.code==="ORTHO_NOT_FOUND"||e.code==="ORTHO_SELECTION_REQUIRED")) refreshProject();
   }
@@ -3732,7 +3776,7 @@ async function analyze(){
   finally{ $("aprog").style.display="none"; validateParams(); }
 }
 
-// ── Cluster review ──────────────────────────────────────────────────────
+//  Cluster review
 // Every picture here is an <img> pointing at our own API, which is same-origin
 // under nginx. The panel this replaced pulled its plots from the FileBrowser
 // raw-download URL instead, which is why "k-selection plot couldn't be loaded"
@@ -3766,7 +3810,7 @@ function renderClusterReview(c){
   REVIEW.recommended = c.recommended_k || null;
   REVIEW.files_url = c.files_url || null;
   // The run's own ortho when the payload names one (an older run does), else
-  // the one selected in step 2 — which is what the newest run just used.
+  // the one selected in step 2, which is what the newest run just used.
   const oid = c.ortho_id || SELECTED_ORTHO;
   const orthoName = (ORTHOS.find(o => o.id === oid) || {}).filename || "";
 
@@ -3800,7 +3844,7 @@ function renderClusterReview(c){
 }
 
 // One k: its t-SNE plot, then a row per cluster with the crowns nearest that
-// cluster's centre — the ones that actually say what the group is. The old
+// cluster's centre, the ones that actually say what the group is. The old
 // panel showed no crowns at all.
 async function showKView(k){
   const view = $("kView"); if(!view) return;
@@ -3899,7 +3943,7 @@ function closeCrown(){ const lb = $("crownLb"); if(lb) lb.hidden = true; }
 
 // Reactive: called on every #ck / #species input. Renders one row per cluster,
 // preserving any species already picked. Clears silently when k is invalid
-// (no alert — this is input-driven, not a button press).
+// (no alert, this is input-driven, not a button press).
 function buildClusterRows(){
   const box=$("clusterRows");
   const k=parseInt($("ck").value,10);
@@ -3932,6 +3976,7 @@ async function submitLabels(){
                       {method:"POST",body:fd});
     $("linfo").innerHTML='<span class="ok">labels saved</span> &middot; '+r.state; log("labels submitted");
     refreshLabelPicker();              // label_count and state just moved
+    refreshRunLists();
   }catch(e){ $("linfo").innerHTML='<span class="err">'+e.message+'</span>'; }
 }
 
@@ -3940,31 +3985,29 @@ async function finalize(){
   $("btnFinal").disabled=true; $("fprog").style.display="block"; $("results").textContent="";
   try{
     $("fstage").textContent="triggering finalize…";
-    // The newest run keeps the original orchestrator call, unchanged. An
-    // older run has to name itself, and /runs/{n}/finalize is the trigger that
-    // takes a run number — drone_api derives it from the project.
-    const useRun = ACTIVE_RUN && ACTIVE_RUN !== (CURRENT_RUN||1);
-    const triggered = useRun
-      ? await api(withPid("/api/v1/project/runs/"+ACTIVE_RUN+"/finalize"),
-                  {method:"POST",headers:{"Content-Type":"application/json"},
-                   body:JSON.stringify({project_id:PID})})
-      : await api("/api/v1/project/drone_api",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({project_id:PID,action:"finalize"})});
-    let r=null;
-    if(triggered.dag_run_id){
-      const {dag_run_id}=triggered;
-      let pollCount=0;
-      while(!r){
-        await new Promise(res=>setTimeout(res,5000));
-        pollCount++;
-        $("fstage").textContent=`polling Airflow… (${pollCount})`;
-        const s=await api(withPid(`/api/v1/project/drone_status/${dag_run_id}?action=finalize`));
-        $("fstage").textContent=`DAG status: ${s.state||"running"} (poll ${pollCount})`;
-        if(s.state==="success"){ r=rememberProject(s); }
-        else if(s.state==="failed"){ throw new Error("DAG failed"); }
-      }
-    } else {
-      r=rememberProject(triggered);
-    }
+    // Always name the run. /runs/{n}/finalize dispatches to Airflow's
+    // drone_finalize DAG when Airflow is configured, and to a local thread
+    // when it is not; either way the run is followed through its own row.
+    const runNo = targetRun();
+    const triggered = await api(withPid("/api/v1/project/runs/"+runNo+"/finalize"),
+                                {method:"POST",headers:{"Content-Type":"application/json"},
+                                 body:JSON.stringify({project_id:PID})});
+    rememberProject(triggered);
+    $("fstage").textContent="export started…";
+    await pollRunState(runNo,["COMPLETED"],["FAILED"],$("fstage"));
+    // The run's own results (downloads and counts for THAT run), plus the
+    // project-level bits the panel below needs: the consent answer, and the
+    // run's folder link.
+    const rr=await api(withPid("/api/v1/project/runs/"+runNo+"/results"));
+    const pr=rememberProject(await api(withPid("/api/v1/project")));
+    let runFiles=null;
+    try{
+      const d=await api(withPid("/api/v1/project/runs?run="+runNo));
+      runFiles=((d.runs||[])[0]||{}).files_url||null;
+    }catch(e){}
+    const r=Object.assign({},rr,{state:"COMPLETED",
+      files_url:runFiles||pr.files_url||null,
+      consent:pr.consent,consent_at:pr.consent_at});
     const d=r.downloads||{};
     let html='<span class="ok">completed.</span>';
     if(r.files_url) html+=` &middot; <a href="${r.files_url}" target="_blank"><b>Browse all output files →</b></a>`;
@@ -3986,10 +4029,10 @@ async function finalize(){
   finally{ $("btnFinal").disabled=false; $("fprog").style.display="none"; }
 }
 
-// ── Re-run / New analysis ───────────────────────────────────────────────
+//  Re-run / New analysis
 // Re-run: same project + data, open a fresh run. Clear the old run name and
 // send the user back to configure & Run analysis (which archives the current
-// run and opens run N+1). New analysis: start over on a new project — behaves
+// run and opens run N+1). New analysis: start over on a new project, behaves
 // like a page refresh.
 function rerunFlow(){
   $("runname").value = "";
@@ -4002,7 +4045,7 @@ function newAnalysisFlow(){
   location.reload();   // fresh start on a new project (re-auth if the gate is on)
 }
 
-// ── Data-sharing consent (captured after finalize) ──────────────────────
+//  Data-sharing consent (captured after finalize)
 const CONSENT_LABELS = {
   0: "No — data not made public (retained for the fixed policy period only).",
   1: "Yes, all data — all data (including labelled crowns) public for training and viewing.",
@@ -4041,13 +4084,13 @@ async function submitConsent(){
   const consent=parseInt(sel.value,10);
   try{
     await api(withPid("/api/v1/project/consent"),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({consent})});
-    // Consent is a one-time choice — remove the box from the UI completely.
+    // Consent is a one-time choice, remove the box from the UI completely.
     const box=$("consentBox"); if(box) box.remove();
     log("consent saved: "+consent);
   }catch(e){ const m=$("consentMsg"); if(m) m.innerHTML='<span class="err">'+e.message+'</span>'; }
 }
 
-// ── Landing: list the user's past runs + their public FileBrowser links ──
+//  Landing: list the user's past runs + their public FileBrowser links
 // Relative day label, falling back to an absolute date past a week. The API
 // returns updated_at as an ISO string (see /projects/mine).
 function runDate(iso){
@@ -4123,18 +4166,18 @@ async function loadMyProjects(){
 }
 
 // Two jobs. Once the user has touched the disclosure, their choice is kept
-// across the re-render that follows opening a project — otherwise the panel
+// across the re-render that follows opening a project, otherwise the panel
 // would collapse under them the moment they click a name. Until then, `null`
 // means "not decided", and the default depends on what the page can offer: with
 // no project open, this list is the only way to get back to earlier work, so it
 // starts open. With one open, the workflow below is what matters and the list
-// stays out of the way — the reason it was collapsed in the first place.
+// stays out of the way, the reason it was collapsed in the first place.
 let PROJECT_PANEL_OPEN = null;
 function panelShouldOpen(){
   return PROJECT_PANEL_OPEN === null ? !PID : PROJECT_PANEL_OPEN;
 }
 
-// ── reopening an earlier project ────────────────────────────────────────
+//  reopening an earlier project
 // The one path back into a survey that was left part-way. Everything the run
 // needs already exists server-side: the ortho library, the run counter, the
 // pinned ortho of the last run. This only points the page at it.
@@ -4193,6 +4236,7 @@ async function openProject(pid){
         + 'To start a fresh project instead, type a new name above and press '
         + '<b>Create project</b>.</div>';
   if(info) info.innerHTML = html;
+  showOpenRunReview(p);
 
   loadMyProjects();                          // re-render so this row shows as open
   const lib = $("orthoLib") || $("oinfo");
@@ -4200,11 +4244,11 @@ async function openProject(pid){
   log("opened project "+PID);
 }
 
-// ── surviving a reload ──────────────────────────────────────────────────
+//  surviving a reload
 // sessionStorage, NOT localStorage, and the difference is the whole point. This
 // remembers the project for THIS TAB only: a reload, or a token refresh, keeps
 // the user where they were. A new tab or a new day starts with nothing open, so
-// the page can never silently adopt a project the user has not just chosen —
+// the page can never silently adopt a project the user has not just chosen ,
 // which is the failure the `if(!PID) return null` guard exists to prevent.
 const OPEN_PID_KEY = "tcp.openProject";
 async function restoreOpenProject(){
@@ -4224,10 +4268,21 @@ async function restoreOpenProject(){
       '<span class="ok">open</span> &middot; <span class="pill">'+esc(p.name || PID)+'</span>'
     + ' <span class="muted">&middot; '+esc(p.state)+' &middot; reopened from your last visit '
     + 'to this tab</span>';
+  showOpenRunReview(p);
   loadMyProjects();
 }
 
-// ── Sign-in gate canvas (landing_I_grid) — interactive canopy detections ──
+const REVIEW_STATES = ["AWAITING_LABELS", "LABELS_SUBMITTED", "FINALIZING", "COMPLETED"];
+
+function showOpenRunReview(p){
+  if(ACTIVE_RUN && ACTIVE_RUN !== (CURRENT_RUN || 1)){
+    openRun(ACTIVE_RUN, {scroll:false});
+    return;
+  }
+  if(p && REVIEW_STATES.includes(p.state)) loadClusterReview(CURRENT_RUN || 1);
+}
+
+//  Sign-in gate canvas (landing_I_grid), interactive canopy detections
 // Self-contained; stops drawing once the gate is hidden (after sign-in / bypass).
 function initGateCanvas(){
   const cv=document.getElementById("map-canvas"); if(!cv) return;
@@ -4238,7 +4293,7 @@ function initGateCanvas(){
     DPR=Math.min(window.devicePixelRatio||1,2); W=cv.clientWidth; H=cv.clientHeight;
     cv.width=W*DPR; cv.height=H*DPR; ctx.setTransform(DPR,0,0,DPR,0,0); setupCanopy(); setupCrowns();
   }
-  // Very subtle orthomosaic tint — a few large, faint green washes so the panel
+  // Very subtle orthomosaic tint, a few large, faint green washes so the panel
   // reads as light aerial ground WITHOUT drowning the crown detections.
   function setupCanopy(){
     canopy=[]; const greens=["#6f8a63","#84a074","#5c7850","#9bb083"];
@@ -4248,7 +4303,7 @@ function initGateCanvas(){
         c:greens[(Math.random()*greens.length)|0], a:0.05+Math.random()*0.06});
     }
   }
-  // Detected crown polygons — the "detection overlay" layer (like overlay.png).
+  // Detected crown polygons, the "detection overlay" layer (like overlay.png).
   function setupCrowns(){
     crowns=[]; const n=16;
     for(let i=0;i<n;i++){
@@ -4278,7 +4333,7 @@ function initGateCanvas(){
       ctx.fillText((lonStart+idx*lonStep).toFixed(4)+"°E",x+4,12); }
     for(let y=gs,idx=0;y<H;y+=gs,idx++){ ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();
       ctx.fillText((latStart-idx*latStep).toFixed(4)+"°N",4,y-4); }
-    // 3) crown detections — outlines with translucent species fill (canopy shows through)
+    // 3) crown detections, outlines with translucent species fill (canopy shows through)
     let active=-1;
     if(isHovering) for(let i=0;i<crowns.length;i++){ if(inPoly(hoverX,hoverY,crowns[i].vertices)){active=i;break;} }
     for(let i=0;i<crowns.length;i++){ const c=crowns[i], tgt=(i===active), v=c.vertices;
@@ -4311,9 +4366,9 @@ function initGateCanvas(){
   reduce ? draw() : requestAnimationFrame(loop);
 }
 
-// ── Boot ────────────────────────────────────────────────────────────────
+//  Boot
 // If a real Google client id is configured, keep the sign-in gate up and wait
-// for the user to authenticate (onSignedIn boots the app) — or let them
+// for the user to authenticate (onSignedIn boots the app), or let them
 // bypass it via guestLogin(). If auth is not configured (local dev /
 // unconfigured deploy), bypass the gate so the pipeline stays usable,
 // matching backend auth_enabled=False.
@@ -4347,7 +4402,7 @@ window.addEventListener("load", ()=>{
 </script>
 
 <script>
-/* ══ Pipeline Walkthrough (hash route #/walkthrough) ══════════════════════
+/*  Pipeline Walkthrough (hash route #/walkthrough)
    Self-contained add-on. Touches nothing outside #wt-page except:
      - window.wtInit, called once by route()
      - one click listener for a[href^="#/walkthrough#"] (same-hash re-scroll,
@@ -4362,7 +4417,7 @@ window.addEventListener("load", ()=>{
     return !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
   };
 
-  /* ── collapsible stages ─────────────────────────────────────────────── */
+  /*  collapsible stages  */
   // Set by wireTour so a collapse/expand can ask the tour to re-resolve which
   // step the reader is actually on. Collapsing a stage moves everything below
   // it, and without this the step counter keeps whatever the scroll jump left
@@ -4380,7 +4435,7 @@ window.addEventListener("load", ()=>{
     });
   }
 
-  /* ── rail highlight ─────────────────────────────────────────────────── */
+  /*  rail highlight  */
   function wireRail(){
     var links = Array.prototype.slice.call(document.querySelectorAll("#wt-rail a"));
     var targets = links.map(function(a){
@@ -4407,7 +4462,7 @@ window.addEventListener("load", ()=>{
   }
 
 
-  /* ── step tour: the video player + the nine screengrabs ────────────────
+  /*  step tour: the video player + the nine screengrabs
      Owns #wt-tour (video) and #wt-steps (steps) plus the #wts-lb lightbox.
      Nothing here touches the app, the guide or the rest of the walkthrough. */
   function wireTour(){
@@ -4421,7 +4476,7 @@ window.addEventListener("load", ()=>{
     var dots  = Array.prototype.slice.call(sec.querySelectorAll(".wts-dot"));
     var smooth = function(){ return reduce() ? "auto" : "smooth"; };
 
-    /* ── is the mp4 actually there? ──
+    /*  is the mp4 actually there?
        It ships beside the page rather than inside it, so it can legitimately
        be missing — someone mails the standalone html on its own. A missing
        file makes <source> fire error and leaves the element parked at
@@ -4460,7 +4515,7 @@ window.addEventListener("load", ()=>{
       if(frame) frame.scrollIntoView({behavior:smooth(), block:"center"});
     }
 
-    /* ── position tracking ── */
+    /*  position tracking  */
     var cur = -1;
     function mark(i){
       if(i === cur) return;
@@ -4501,7 +4556,7 @@ window.addEventListener("load", ()=>{
       b.addEventListener("click", function(){ seek(parseFloat(b.getAttribute("data-t"))); });
     });
 
-    /* ── keeping "Step n of 9" honest ──────────────────────────────────
+    /*  keeping "Step n of 9" honest
        This used to pick the step with the highest intersection ratio and,
        when NOTHING was on screen, silently keep the last one:
 
@@ -4564,7 +4619,7 @@ window.addEventListener("load", ()=>{
     window.addEventListener("resize", syncPos);
     mark(0);
 
-    /* ── lightbox ── */
+    /*  lightbox  */
     var lb = $$("wts-lb"), lbimg = $$("wts-lbimg"), lbttl = $$("wts-lbttl"),
         lbclose = $$("wts-lbclose"), lbzoom = $$("wts-lbzoom");
     var lastFocus = null, natural = 900, zoom = 1;

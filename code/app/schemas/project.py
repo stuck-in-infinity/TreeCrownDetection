@@ -1,9 +1,10 @@
 from datetime import datetime
 
+from typing import Annotated
+
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.core.models_registry import default_backbone
-
 
 class PipelineParams(BaseModel):
     """The settings a user can change. These mirror the pipeline's Config fields.
@@ -29,7 +30,7 @@ class PipelineParams(BaseModel):
     detections_per_image: int = Field(default=6, ge=1, le=500)
     # Size each tile is resized to before inference. With the tile footprint it
     # decides how large a crown looks to the network:
-    #   pixels_per_metre = min_size_test / (tile_size + 2 * buffer)
+    # pixels_per_metre = min_size_test / (tile_size + 2 * buffer)
     min_size_test: int = Field(default=512, ge=256, le=2048)
     # Crown area filter, in the units of the ortho's CRS, so square metres for
     # UTM. Both bounds are exclusive.
@@ -38,7 +39,9 @@ class PipelineParams(BaseModel):
     # False leaves out the leftover strip along the right and bottom edges.
     full_coverage: bool = False
     # Step 1: features and clustering.
-    k_list: list[int] = Field(default_factory=lambda: [2, 4, 6, 8, 10])
+    k_list: list[Annotated[int, Field(ge=2, le=100)]] = Field(
+        default_factory=lambda: [2, 4, 6, 8, 10], min_length=1
+    )
     pca_components: int | None = Field(default=50, ge=2, le=768)
     # Limited by the GPU memory on the machine, so the UI does not offer it;
     # raising it runs the GPU out of memory. It is still accepted here so stored
@@ -64,7 +67,6 @@ class PipelineParams(BaseModel):
             )
         return self
 
-
 class ProjectCreate(BaseModel):
     """Creating a project needs only a display name. The server generates the
     UUID and returns it, and every other endpoint refers to the project by it.
@@ -76,7 +78,6 @@ class ProjectCreate(BaseModel):
     model_key: str | None = None          # None uses the server default
     source_epsg: int | None = None        # None reads it from the GeoTIFF
     params: PipelineParams = Field(default_factory=PipelineParams)
-
 
 class AnalyzeTrigger(BaseModel):
     """Optional body for POST /runs/analyze. It names the run and picks the
@@ -103,13 +104,11 @@ class AnalyzeTrigger(BaseModel):
     based_on_run: int | None = None
     execution_id: str | None = None  # set by Airflow callbacks; runs the compute directly
 
-
 class FinalizeTrigger(BaseModel):
     """Optional body for POST /runs/finalize, naming the project explicitly."""
 
     action: str | None = None
     project_id: str | None = None
-
 
 class ProjectUpdate(BaseModel):
     """Body for setting up a re-run: change the parameters, and optionally the
@@ -122,12 +121,10 @@ class ProjectUpdate(BaseModel):
     params: dict | None = None
     run_name: str | None = None
 
-
 class OrthoFromUrl(BaseModel):
     """Body for adding an orthomosaic from a public Google Drive link."""
 
     url: str
-
 
 class OrthoOut(BaseModel):
     """One orthomosaic in the project's library.
@@ -148,7 +145,6 @@ class OrthoOut(BaseModel):
     crs: str | None = None
     bands: int | None = None
     size_bytes: int | None = None
-
 
 class ProjectOut(BaseModel):
     project_id: str

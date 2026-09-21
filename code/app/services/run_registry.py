@@ -1,7 +1,7 @@
 """The bridge between ``Project`` (one live run) and ``Run`` (all of them).
 
-Run-scoped facts — state, params, model, the recommended and chosen k, the run
-name, the failure record — used to live on the ``projects`` row, so a project
+Run-scoped facts, state, params, model, the recommended and chosen k, the run
+name, the failure record, used to live on the ``projects`` row, so a project
 could describe exactly one run. Moving them all at once would have meant
 rewriting every state transition in six files in a single commit, with no way to
 ship or test it in stages. So the project keeps those fields, and this module
@@ -21,7 +21,7 @@ exists for: labelling run 2 while run 4 is computing. That writes into
 while the project stays ANALYZING for run 4.
 
 Mirroring is bookkeeping, so nothing here raises. A failure must not take down
-the request that was doing the real work — a missing mirror is repaired on the
+the request that was doing the real work, a missing mirror is repaired on the
 next transition, but a 500 on an analyze that actually succeeded is not.
 """
 from __future__ import annotations
@@ -46,10 +46,8 @@ FINALIZABLE_STATES = {"LABELS_SUBMITTED", "COMPLETED", "FAILED"}
 #: project folder, which are shared.
 _PROJECT_ONLY_STATES = {"UPLOADING", "DELETING"}
 
-
 def active_number(project) -> int:
     return getattr(project, "current_run", 1) or 1
-
 
 def get_run(db, project, number: int | None = None):
     """The Run row for ``number`` (default: the active run). None if absent."""
@@ -60,14 +58,13 @@ def get_run(db, project, number: int | None = None):
         .one_or_none()
     )
 
-
 def run_ortho_id(project) -> str | None:
     """Which ortho the project's current parameters pin the run to.
 
     ``params['ortho_id']`` is the only trustworthy source. The old
     ``archive_current_run`` also wrote an ``ortho`` filename, but it took
-    ``project.orthos[0]`` — the FIRST ortho in the library, not the one the run
-    used — so with a multi-ortho project that field is simply wrong. It is not
+    ``project.orthos[0]``, the FIRST ortho in the library, not the one the run
+    used, so with a multi-ortho project that field is simply wrong. It is not
     read here, and it should not be read anywhere.
     """
     pinned = (dict(getattr(project, "params", None) or {})).get("ortho_id")
@@ -76,7 +73,6 @@ def run_ortho_id(project) -> str | None:
     # A single-ortho project has no ambiguity to resolve.
     orthos = list(getattr(project, "orthos", None) or [])
     return orthos[0].id if len(orthos) == 1 else None
-
 
 def ensure_run(db, project, number: int | None = None):
     """Get, or create, the Run row for ``number``. Does not commit."""
@@ -89,11 +85,10 @@ def ensure_run(db, project, number: int | None = None):
         db.flush()                      # give it an id without ending the txn
     return run
 
-
 def mirror(db, project, number: int | None = None, commit: bool = True):
     """Copy the project's run-scoped fields onto its Run row.
 
-    Called from every place a run-scoped field changes — see the call sites in
+    Called from every place a run-scoped field changes, see the call sites in
     ``services/state.py``, ``workers/tasks.py`` and the trigger endpoints. One
     line each, rather than a rewrite of all of them.
     """
@@ -139,13 +134,12 @@ def mirror(db, project, number: int | None = None, commit: bool = True):
             pass
         return None
 
-
 def refresh_project_state(db, project, commit: bool = True) -> str | None:
     """Recompute ``Project.state`` from the run rows.
 
     The project's state is derived, not authored: it is whichever run is
     computing right now, and otherwise the active run's state. Deriving it is
-    what makes finalizing an OLDER run safe — the project claims the lock, the
+    what makes finalizing an OLDER run safe, the project claims the lock, the
     old run does the work, and when it finishes the project goes back to
     describing the active run instead of inheriting the old one's outcome.
 
@@ -179,13 +173,12 @@ def refresh_project_state(db, project, commit: bool = True) -> str | None:
             pass
         return None
 
-
 def set_run_state(db, project, number: int, state: str, error=None):
     """Move ONE run to ``state``, then re-derive the project's state from it.
 
     This is what the worker calls. It exists because the worker used to write
     straight to ``project.state``, which meant it could only ever describe the
-    active run — finalize an older one and the project would end up reporting
+    active run, finalize an older one and the project would end up reporting
     that run's outcome instead of its own.
     """
     try:
@@ -210,17 +203,14 @@ def set_run_state(db, project, number: int, state: str, error=None):
             pass
         return None
 
-
 def labels_for(db, run) -> int:
     """How many cluster labels this run has. Used by the capability flags."""
     if run is None:
         return 0
     return db.query(models.ClusterLabel).filter_by(run_id=run.id).count()
 
-
 def can_label(run) -> bool:
     return bool(run) and run.state in LABELABLE_STATES
-
 
 def can_finalize(db, run) -> bool:
     """Finalize needs both a permitted state and labels to export.
