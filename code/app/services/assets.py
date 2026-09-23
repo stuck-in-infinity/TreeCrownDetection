@@ -1,7 +1,11 @@
 import os
 
-from app.core.storage import project_paths, relative_artifact_path
-from app.services.stac import build_stac_item
+from app.core.storage import (
+    first_polygon_geojson,
+    project_paths,
+    relative_artifact_path,
+)
+from app.services.stac import build_stac_item, read_stac_item
 
 
 HOSTING_PLATFORM = os.getenv("TCP_HOSTING_PLATFORM", "act4dws4")
@@ -14,15 +18,11 @@ def run_version(project, run: int | None = None) -> int:
 
 def analyze_asset_id(project, run: int | None = None) -> str:
     """Return the path to the crown-polygon GeoJSON that analyze produced."""
-    p = project_paths(project.id, run_version(project, run))
-    poly = p["polygons"]
-    try:
-        gj = sorted(f for f in os.listdir(poly) if f.lower().endswith(".geojson"))
-        if gj:
-            return os.path.join(poly, gj[0])
-    except OSError:
-        pass
-    return p["step1_output"]
+    version = run_version(project, run)
+    found = first_polygon_geojson(project.id, version)
+    if found:
+        return found
+    return project_paths(project.id, version)["step1_output"]
 
 
 def analyze_asset_fields(project, run: int | None = None) -> dict:
@@ -51,8 +51,18 @@ def asset_response_fields(
 def stac_response(
     project, asset_id: str, run: int | None = None, stage: str | None = None
 ) -> dict:
+    """The run's STAC item, as served inline beside the asset fields.
+
+    A finalized run already has one on disk, written with the chosen k and the
+    finalize stage in its id. Rebuilding here instead would answer with a
+    different id and a null ``chosen_k`` for the same run, because the callers
+    that ask for a results payload pass ``stage="analyze"`` and know nothing
+    about k. So the file wins wherever it exists.
+    """
     version = run_version(project, run)
-    item = build_stac_item(project, run=version, stage=stage)
+    item = read_stac_item(project, version) or build_stac_item(
+        project, run=version, stage=stage
+    )
     props = item.setdefault("properties", {})
     props["project_id"] = project.id
     props["run"] = version

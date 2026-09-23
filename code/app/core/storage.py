@@ -58,6 +58,21 @@ def project_paths(project_id: str, run: int = 1) -> dict:
     }
 
 
+def first_polygon_geojson(project_id: str, run: int = 1) -> str | None:
+    """The run's crown-polygon GeoJSON, or None if the run wrote none.
+
+    One file per orthomosaic lands in ``polygons/``, named after the ortho stem,
+    so there is no fixed filename to look up. Callers that serve or describe the
+    layer take the first by name, which keeps the choice stable across calls.
+    """
+    poly = project_paths(project_id, run)["polygons"]
+    try:
+        files = sorted(f for f in os.listdir(poly) if f.lower().endswith(".geojson"))
+    except OSError:
+        return None
+    return os.path.join(poly, files[0]) if files else None
+
+
 def ensure_project_dirs(project_id: str, run: int = 1) -> dict:
     paths = project_paths(project_id, run)
     for key, p in paths.items():

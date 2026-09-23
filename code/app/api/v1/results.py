@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_project
 from app.core.logging import ERROR_CODES, get_logger, naive_now
-from app.core.storage import project_paths
+from app.core.storage import first_polygon_geojson, project_paths
 from app.db import models
 from app.db.session import get_db
 from app.services.assets import analyze_asset_fields
@@ -45,6 +45,7 @@ def build_results_payload(project) -> dict:
     kmz = os.path.join(p["step4_output"], "species_map.kmz")
     cm = os.path.join(p["step3_output"], "confusion_matrix.png")
     stac = os.path.join(p["step4_output"], "stac_item.json")
+    polygons = first_polygon_geojson(project.id, _run(project))
 
     distribution: dict[str, int] = {}
     if os.path.exists(master):
@@ -82,6 +83,7 @@ def build_results_payload(project) -> dict:
             "polygon_species_csv": f"{base}/polygon-species.csv" if os.path.exists(polyspecies) else None,
             "confusion_matrix_png": f"{base}/confusion-matrix.png" if os.path.exists(cm) else None,
             "stac_item_json": f"{base}/stac-item.json" if os.path.exists(stac) else None,
+            "polygons_geojson": f"{base}/polygons.geojson" if polygons else None,
         },
     }
     payload.update(analyze_asset_fields(project))
@@ -168,6 +170,19 @@ def download_cm(project=Depends(get_project)):
                     "uploaded before finalizing; the rest of the results are unaffected"})
     return FileResponse(f, media_type="image/png")
 
+@router.get("/projects/{project_id}/results/polygons.geojson")
+@router.get("/project/results/polygons.geojson")
+def download_polygons(project=Depends(get_project)):
+    """The run's crown-polygon layer, the asset the STAC item's ``data`` names."""
+    f = first_polygon_geojson(project.id, _run(project))
+    _require_completed(project)
+    if not f or not os.path.exists(f):
+        raise HTTPException(404, {"code": "NOT_FOUND", "message": "crown polygons not found",
+            "project_id": project.id,
+            "hint": "this run detected no crowns, or its working files were cleaned up — "
+                    "re-run the analysis to rebuild the layer"})
+    return FileResponse(f, media_type="application/geo+json", filename="tree_crowns.geojson")
+
 @router.get("/projects/{project_id}/results/stac-item.json")
 @router.get("/project/results/stac-item.json")
 def download_stac_item(project=Depends(get_project)):
@@ -181,6 +196,7 @@ def download_stac_item(project=Depends(get_project)):
     return FileResponse(f, media_type="application/json", filename="stac_item.json")
 
 # -- run history: list + per-run results for comparison (v5) ----------------
+# A None filename means the name is not fixed and _asset_path works it out.
 _ASSETS = {
     "kmz": ("step4_output", "species_map.kmz",
             "application/vnd.google-earth.kmz", "species_map.kmz"),
@@ -188,6 +204,7 @@ _ASSETS = {
     "polygon-species.csv": ("step2_output", "polygon_species.csv", "text/csv", "polygon_species.csv"),
     "confusion-matrix.png": ("step3_output", "confusion_matrix.png", "image/png", None),
     "stac-item.json": ("step4_output", "stac_item.json", "application/json", "stac_item.json"),
+    "polygons.geojson": ("polygons", None, "application/geo+json", "tree_crowns.geojson"),
 }
 
 def _asset_path(project_id: str, run: int, asset: str):
@@ -197,6 +214,13 @@ def _asset_path(project_id: str, run: int, asset: str):
             "hint": "ask for one of: " + ", ".join(_ASSETS)})
     dir_key, fname, media, download_name = spec
     p = project_paths(project_id, run)
+    if fname is None:
+        # The crown layer is named after the orthomosaic, so there is no fixed
+        # name to join. A run that detected nothing has no file at all; return
+        # the directory's placeholder name so the caller reports it missing.
+        found = first_polygon_geojson(project_id, run)
+        return (found or os.path.join(p[dir_key], "tree_crowns.geojson"),
+                media, download_name)
     return os.path.join(p[dir_key], fname), media, download_name
 
 def _run_results_payload(project, run: int) -> dict:

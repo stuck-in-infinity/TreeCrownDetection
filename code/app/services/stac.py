@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 
 from app.core.models_registry import default_backbone
 from app.core.settings import settings
-from app.core.storage import project_paths, relative_artifact_path
+from app.core.storage import first_polygon_geojson, project_paths
 
 # Descriptions for the columns of crown_master.csv. A column that is not listed
 # here is still written out, but with a generic description.
@@ -56,6 +56,24 @@ def _slug(text: str) -> str:
     while "__" in s:
         s = s.replace("__", "_")
     return s
+
+
+def _ring(bbox: list) -> dict:
+    """The bbox as a Polygon wound counter-clockwise.
+
+    RFC 7946 asks for the right-hand rule on exterior rings, and a clockwise
+    ring reads as a hole to the consumers that check.
+    """
+    return {
+        "type": "Polygon",
+        "coordinates": [[
+            [bbox[0], bbox[1]],
+            [bbox[2], bbox[1]],
+            [bbox[2], bbox[3]],
+            [bbox[0], bbox[3]],
+            [bbox[0], bbox[1]],
+        ]],
+    }
 
 
 def _footprint_from_geojson(geojson_path: str | None):
@@ -107,17 +125,7 @@ def _footprint_from_geojson(geojson_path: str | None):
         return None, None
 
     bbox = [round(minx, 6), round(miny, 6), round(maxx, 6), round(maxy, 6)]
-    geometry = {
-        "type": "Polygon",
-        "coordinates": [[
-            [bbox[0], bbox[1]],
-            [bbox[0], bbox[3]],
-            [bbox[2], bbox[3]],
-            [bbox[2], bbox[1]],
-            [bbox[0], bbox[1]],
-        ]],
-    }
-    return geometry, bbox
+    return _ring(bbox), bbox
 
 
 def _footprint_wgs84(ortho_dir: str):
@@ -160,17 +168,24 @@ def _footprint_wgs84(ortho_dir: str):
         return None, None
 
     bbox = [round(minx, 6), round(miny, 6), round(maxx, 6), round(maxy, 6)]
-    geometry = {
-        "type": "Polygon",
-        "coordinates": [[
-            [bbox[0], bbox[1]],
-            [bbox[0], bbox[3]],
-            [bbox[2], bbox[3]],
-            [bbox[2], bbox[1]],
-            [bbox[0], bbox[1]],
-        ]],
-    }
-    return geometry, bbox
+    return _ring(bbox), bbox
+
+
+def _run_datetime(candidates: list) -> str:
+    """When the run produced its outputs, as a UTC timestamp.
+
+    Taken from the mtime of the first output that exists, newest artifact
+    first, so the same run always reports the same instant. Reading the clock
+    instead gave every call a different datetime, which made two items for one
+    run look like two observations.
+
+    Falls back to now for a run with nothing on disk yet.
+    """
+    for path in candidates:
+        if path and os.path.exists(path):
+            stamp = datetime.fromtimestamp(os.path.getmtime(path), timezone.utc)
+            return stamp.strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _table_columns(master_csv: str) -> list[dict]:
@@ -208,7 +223,7 @@ def build_stac_item(
     paths = project_paths(project.id, run)
     params = dict(getattr(project, "params", None) or {})
 
-    geojson = _first_geojson(paths["polygons"])
+    geojson = first_polygon_geojson(project.id, run)
     master_csv = os.path.join(paths["step2_output"], "crown_master.csv")
     poly_csv = os.path.join(paths["step2_output"], "polygon_species.csv")
     kmz = os.path.join(paths["step4_output"], "species_map.kmz")
@@ -226,7 +241,7 @@ def build_stac_item(
         # crown GeoJSON, which is already in WGS84.
         geometry, bbox = _footprint_from_geojson(geojson)
 
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    now = _run_datetime([kmz, geojson, master_csv])
     item_id = f"{_slug(project.name) or 'tree_crown'}_{project.id[:8]}_run{run}"
     if stage:
         item_id += f"_{stage}"
@@ -269,6 +284,7 @@ def build_stac_item(
         "end_datetime": now,
         "datetime": now,
         "keywords": ["forestry", "tree-crown", "species", "drone", "orthomosaic"],
+        "collection": "tree_crown_runs",
         "project_id": project.id,
         "run": run,
         "detector_model": project.model_key,
@@ -288,12 +304,27 @@ def build_stac_item(
             "center_latitude": round((bbox[1] + bbox[3]) / 2, 6),
         })
 
-    # These hrefs match the download endpoints in results.py.
-    results_base = "/api/v1/project/results"
+    # These hrefs match the download endpoints in results.py, and they name both
+    # the project and the run in the PATH.
+    #
+    # /project/runs/{run}/results/<asset> would 404 or answer for the wrong
+    # project: with no project_id, get_project falls back to "the newest project
+    # owned by the caller", and a catalog client sends no identity at all. The
+    # /projects/{id}/... family takes the project from the path instead.
+    #
+    # The run number is in the path for the same reason the project id is: the
+    # current-run routes answer for whichever run is live, so an older item
+    # would hand out a newer run's files under the older run's metadata.
+    #
+    # Ownership is still enforced on the way in, so a client has to authenticate
+    # as the owner when auth_enabled is on. The identity is deliberately not in
+    # the URL: these hrefs end up in a catalog, and an email does not belong
+    # there.
+    results_base = f"/api/v1/projects/{project.id}/runs/{run}/results"
     assets: dict[str, dict] = {}
     if geojson and os.path.exists(geojson):
         assets["data"] = {
-            "href": relative_artifact_path(geojson),
+            "href": _href(f"{results_base}/polygons.geojson"),
             "type": "application/geo+json",
             "title": "Tree crown GeoJSON vector layer",
             "roles": ["data"],
@@ -326,13 +357,6 @@ def build_stac_item(
             "title": "Validation confusion matrix",
             "roles": ["overview"],
         }
-    assets["style"] = {
-        "href": "https://raw.githubusercontent.com/core-stack-org/QGIS-Styles/main/Land/LULC0_12class.qml",
-        "type": "application/xml",
-        "title": "QGIS Style file",
-        "roles": ["metadata"],
-    }
-
     item = {
         "type": "Feature",
         "stac_version": "1.1.0",
@@ -340,29 +364,14 @@ def build_stac_item(
             "https://stac-extensions.github.io/table/v1.2.0/schema.json"
         ],
         "id": item_id,
-        "collection": "tree_crown_runs",
         "geometry": geometry,
         "properties": properties,
         "assets": assets,
+        # Only links that resolve. This API serves no catalog.json or
+        # collection.json, so root, parent and collection links would point at
+        # nothing, and an item that names a `collection` must link to it. The
+        # collection name stays in properties instead.
         "links": [
-            {
-                "rel": "root",
-                "href": "catalog.json",
-                "type": "application/json",
-                "title": "Tree Crown Spatio Temporal Asset Catalog",
-            },
-            {
-                "rel": "collection",
-                "href": "collection.json",
-                "type": "application/json",
-                "title": "tree_crown_runs",
-            },
-            {
-                "rel": "parent",
-                "href": "collection.json",
-                "type": "application/json",
-                "title": "tree_crown_runs",
-            },
             {
                 "rel": "self",
                 "href": _href(f"{results_base}/stac-item.json"),
@@ -382,12 +391,21 @@ def stac_item_path(project, run: int | None = None) -> str:
     )
 
 
-def _first_geojson(poly_dir: str) -> str | None:
-    try:
-        files = sorted(f for f in os.listdir(poly_dir) if f.lower().endswith(".geojson"))
-    except OSError:
+def read_stac_item(project, run: int | None = None) -> dict | None:
+    """The item finalize wrote for this run, or None if it wrote none.
+
+    Callers that serve an item inline read it back rather than rebuilding, so
+    what the API reports and what the run's folder holds cannot disagree.
+    """
+    path = stac_item_path(project, run)
+    if not os.path.exists(path):
         return None
-    return os.path.join(poly_dir, files[0]) if files else None
+    try:
+        with open(path) as f:
+            item = json.load(f)
+    except (OSError, ValueError):
+        return None
+    return item if isinstance(item, dict) else None
 
 
 def write_stac_item(project, chosen_k: int | None = None, run: int | None = None) -> str:
