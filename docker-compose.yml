@@ -1,16 +1,18 @@
 # ════════════════════════════════════════════════════════════════════════
-# Tree-Crown backend — workstation bundle
+# Tree-Crown — workstation bundle
 #
-#   api       FastAPI backend. Baked venv in the image; code/data are
-#             bind-mounted. Detector weights are mounted from HOST_MODELS_DIR.
-#             Listens on 8000 in the container, published to the
-#             host as 8123 (the port a remote/local Airflow uses to call back).
-#   frontend  Simple static UI (nginx) on host port 8200.
+#   api       One container for the FastAPI backend AND the web UI, which the
+#             API serves at "/" (app/main.py). Baked venv + frontend copy in
+#             the image; code/frontend/data are bind-mounted. Detector weights
+#             are mounted from HOST_MODELS_DIR. Listens on 8000 in the
+#             container, published on the host as DRONE_API_PORT (8200): users,
+#             Google sign-in and Airflow's callbacks all use that one port.
+#   db        Postgres, opt-in behind the "postgres" profile.
 #
 # Airflow is NOT part of this bundle — it runs wherever the operator hosts it.
 # Both URLs are configurable in .env:
 #   TCP_AIRFLOW_BASE_URL  our backend -> Airflow REST (to start a DAG)
-#   (DAG side) DRONE_API_BASE  Airflow DAG -> our backend (default :8123)
+#   (DAG side) DRONE_API_BASE  Airflow DAG -> our backend (default :8200)
 # ════════════════════════════════════════════════════════════════════════
 
 # Docker's json-file driver keeps every line a container has ever written, with
@@ -61,7 +63,8 @@ services:
       dockerfile: Dockerfile
       args:
         TORCH_INDEX: "${TORCH_INDEX:-https://download.pytorch.org/whl/cpu}"
-    image: ${IMAGE_API:-uavforaliens/treecrown-workstation:cu128}
+    # v1 = CPU build, v1-cu128 = GPU build (set TORCH_INDEX to the cu128 index).
+    image: ${IMAGE_API:-uavforaliens/treecrown-workstation:v1-cu128}
     restart: unless-stopped
     logging: *default-logging
     env_file: .env
@@ -78,13 +81,12 @@ services:
     working_dir: /code
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
     ports:
-      # Host port from .env (TCP_API_PORT), container port fixed at 8000.
-      # It was "8123:8000" hardcoded, which meant changing it required editing
-      # this file — and this file is committed, so the change followed every
-      # deployment around.
-      - "${TCP_API_PORT:-8123}:8000"
+      # One host port (DRONE_API_PORT in .env) for the UI and the API alike; the
+      # container port is fixed at 8000. Airflow's DRONE_API_BASE uses it too.
+      - "${DRONE_API_PORT:-8200}:8000"
     volumes:
       - ./code:/code              # backend code (mounted, not baked)
+      - ./frontend:/frontend      # web UI, over the image's copy (edits need no rebuild)
       - ./data:/data              # storage + sqlite DB (empty initially)
       - ${HOST_MODELS_DIR:?Set HOST_MODELS_DIR in .env to the detector weights folder}:/models:ro
     extra_hosts:
@@ -101,27 +103,6 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-
-  frontend:
-    build:
-      context: .
-      dockerfile: Dockerfile.frontend
-    image: ${IMAGE_FRONTEND:-uavforaliens/treecrown-frontend:latest}
-    restart: unless-stopped
-    logging: *default-logging
-    ports:
-      - "${TCP_FRONTEND_PORT:-8200}:80"    # open http://localhost:<that port>
-    volumes:
-      - ./frontend:/usr/share/nginx/html
-      # Keep the access and error logs on the host. Without this they live in
-      # the container's writable layer and go when it is replaced, which is
-      # every deploy.
-      - ./data/logs/nginx:/var/log/nginx
-      # Our nginx config (logging + the /api/ proxy), mounted over the copy in
-      # the image so a config change does not wait for a rebuild.
-      - ./docker/nginx-frontend.conf:/etc/nginx/conf.d/default.conf:ro
-    depends_on:
-      - api
 
 volumes:
   # Named volume, not a bind mount under ./data.

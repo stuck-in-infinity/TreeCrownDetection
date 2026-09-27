@@ -6,3 +6,9 @@ code/venv/
 code/storage/
 *.pth
 *.zip
+# Frontend files that are not part of the served page.
+frontend/*.md
+frontend/index1.html
+frontend/index.legacy.html
+frontend/filebrowser_fetch_test.html
+frontend/config.js

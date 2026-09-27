@@ -2,18 +2,21 @@
 
 Detect individual tree crowns from a drone orthomosaic, cluster them by
 appearance, label clusters with species, and export a georeferenced **KMZ +
-CSVs**. Runs as a **FastAPI backend + static web UI** (Docker), with **optional
+CSVs**. Runs as **one Docker container** — a FastAPI backend that also serves
+the static web UI — with **optional
 Airflow** orchestration and **optional FileBrowser** output sharing.
 
-Docker Hub images (Python env + deps only; app code, `data/`, and model weights
-are bind-mounted from this folder at run time — keep the folder together):
+Docker Hub image (Python env + deps + a copy of the web UI; app code, `data/`,
+and model weights are bind-mounted from this folder at run time — keep the
+folder together). One image, two variants:
 
 ```
-uavforaliens/treecrown-workstation : cu128    (backend API, CUDA build)
-uavforaliens/treecrown-frontend    : latest   (web UI)
+uavforaliens/treecrown-workstation : v1-cu128   (API + UI, CUDA build — compose default)
+uavforaliens/treecrown-workstation : v1         (API + UI, CPU build)
 ```
 
-Default ports: **8123** backend API, **8200** web UI, **8098** FileBrowser.
+Default ports: **8200** for the web UI and the API alike (one container, one
+port; Airflow calls back on it too), plus **8098** FileBrowser.
 A CUDA-capable NVIDIA GPU is expected; see §3c to run on CPU.
 
 ---
@@ -23,8 +26,9 @@ A CUDA-capable NVIDIA GPU is expected; see §3c to run on CPU.
 - **Docker Engine + `docker compose` v2** (or Docker Desktop).
 - **An NVIDIA GPU**, with the driver and the NVIDIA Container Toolkit installed.
   Both compose files reserve one (`driver: nvidia`), and the published API image
-  is a CUDA build (`:cu128`). To run without a GPU see §3c.
-- **This folder**, kept together — the images carry only the Python environment;
+  is a CUDA build (`:v1-cu128`). To run without a GPU see §3c.
+- **This folder**, kept together — the image carries the Python environment and
+  a fallback copy of the UI;
   `code/`, `data/`, `frontend/` and the model weights are bind-mounted from here
   at run time. `data/hf-cache/` matters as much as the rest: the DINOv2 feature
   model is already cached there and `.env` sets `HF_HUB_OFFLINE=1`, so a run
@@ -40,7 +44,7 @@ A CUDA-capable NVIDIA GPU is expected; see §3c to run on CPU.
   250711_tropical_closed_canopy.pth      key: tropical_closed
   ```
   You only need the ones you intend to use; a project picks one by `model_key`.
-- **Internet once**, to pull the two images. After that the stack runs offline:
+- **Internet once**, to pull the image. After that the stack runs offline:
   the detector weights are local files and the DINOv2 model is pre-cached.
 
 ---
@@ -64,14 +68,16 @@ weights folder:
 HOST_MODELS_DIR=./models
 ```
 
-Leave `IMAGE_API` / `IMAGE_FRONTEND` commented out unless you are pinning a
-specific tag — each compose file then picks its own correct default (§3).
+Leave `IMAGE_API` commented out unless you are pinning a specific tag (e.g.
+`:v1` on a CPU-only host) — the compose files default to `:v1-cu128`.
+`.env.example` lists the variables in use first, then optional overrides, then
+settings nothing reads today.
 
 Other settings worth knowing (all documented inline in `.env.example`):
 
 | Setting | Meaning |
 |---|---|
-| `TCP_API_PORT`, `TCP_FRONTEND_PORT` | Host ports. Honoured by `docker-compose.yml` only — the hub file hardcodes 8123/8200. |
+| `DRONE_API_PORT` | The one host port (default 8200) for UI, API and Airflow callbacks. Honoured by both compose files. |
 | `TCP_AUTH_ENABLED` | `true` requires a signed-in identity on every call (§5). Leave `false` for local use. |
 | `TCP_THUMBS_PER_CLUSTER` | Crowns per cluster given a thumbnail during analysis (default 5). `0` renders them on demand instead. |
 | `TCP_AIRFLOW_BASE_URL` | Blank runs the pipeline in this process. **`.env.example` ships this set, so a fresh copy has Airflow ON** — blank it unless you have read §6. |
@@ -84,30 +90,23 @@ Other settings worth knowing (all documented inline in `.env.example`):
 | `TCP_FILEBROWSER_*` | Optional output sharing (§7). |
 | `TCP_STARTUP_RECOVERY_ENABLED` | On boot, releases runs a restart killed. Leave `true`. |
 
-### b. `frontend/config.js` — what the browser talks to
+### b. Browser config — also from `.env`
+
+There is no frontend config file to create. The API generates `/config.js` for
+the page from two `.env` values on every load (restart the container after a
+change):
 
 ```bash
-cp frontend/config.js.example frontend/config.js
+TCP_GOOGLE_CLIENT_ID=xxxx.apps.googleusercontent.com   # §5; public value
+# TCP_FRONTEND_API_BASE=                               # window.API_BASE
 ```
 
-```js
-window.GOOGLE_CLIENT_ID = "xxxx.apps.googleusercontent.com";  // §5; public value
-window.API_BASE = "http://localhost:8123";
-```
+Leave `TCP_FRONTEND_API_BASE` unset. The API serves the UI itself, so the page
+and `/api/` are always on the same origin. Set it to a full URL only if you host
+the UI somewhere other than this container.
 
-**`API_BASE` is the setting people get wrong.** The UI container serves static
-files and does **not** proxy to the API, so with the default ports the page is
-on `:8200` and the API on `:8123` — two different origins. The template ships
-`window.API_BASE = ""` (same origin), which is correct **only** when you have
-put the UI and `/api/` behind one reverse proxy. For a plain
-`docker compose up`, set it to the API's address:
-
-- same machine → `http://localhost:8123`
-- another machine on the LAN → `http://<host-ip>:8123` (not `localhost`, which
-  would mean the viewer's own computer)
-
-Leave `GOOGLE_CLIENT_ID` at its placeholder only on a local development machine;
-set a real client id before anyone else uses the deployment (§5).
+Leave `TCP_GOOGLE_CLIENT_ID` blank only on a local development machine; set a
+real client id before anyone else uses the deployment (§5).
 
 ---
 
@@ -121,8 +120,8 @@ docker compose -f docker-compose.hub.yml up -d
 docker compose -f docker-compose.hub.yml ps
 ```
 
-Starts three containers: **api** (`:8123`), **frontend** (`:8200`) and
-**filebrowser** (`:8098`). Ports are fixed in this file; edit it to change them.
+Starts two containers: **api** (UI + API, on `:8200`) and
+**filebrowser** (`:8098`). Open **http://localhost:8200**.
 
 ### b. Build locally instead
 
@@ -133,29 +132,31 @@ docker compose build
 docker compose up -d
 ```
 
-This file honours `TCP_API_PORT` / `TCP_FRONTEND_PORT` from `.env`, and has no
-FileBrowser service.
+This file has no FileBrowser service. To build and push both published
+variants (`v1` CPU, `v1-cu128` GPU) run `./publish.sh <dockerhub-user> [tag]`;
+`NO_PUSH=1` builds and tags them locally only.
 
 ### c. Running without an NVIDIA GPU
 
-Both compose files request a GPU, and the published image is a CUDA build. For a
-CPU-only machine, build locally with the CPU wheels and drop the GPU
-reservation:
+Both compose files request a GPU, and default to the CUDA image. For a
+CPU-only machine, use the CPU variant and drop the GPU reservation:
 
 ```bash
 # in .env
-TORCH_INDEX=https://download.pytorch.org/whl/cpu
+IMAGE_API=uavforaliens/treecrown-workstation:v1
 ```
 
 then delete the `deploy: resources: reservations: devices:` block from the `api`
-service in `docker-compose.yml` and run `docker compose build`. Detection and
+service in the compose file you use. (To build it yourself instead, set
+`TORCH_INDEX=https://download.pytorch.org/whl/cpu` and `docker compose build`.) Detection and
 feature extraction are considerably slower but the pipeline is unchanged.
 
 ### d. Check it came up
 
 ```bash
-curl http://localhost:8123/livez                       # {"status":"ok"}
-curl http://localhost:8123/api/v1/detectors            # the weights it can see
+curl http://localhost:8200/livez                       # {"status":"ok"}
+curl -I http://localhost:8200/                         # the UI, same container and port
+curl http://localhost:8200/api/v1/detectors            # the weights it can see
 docker compose -f docker-compose.hub.yml logs -f api   # follow the log
 ```
 
@@ -254,13 +255,15 @@ Setup:
    **Authorized JavaScript origins** = your site origin (scheme+host, **no path**),
    e.g. `https://your-site.example`. Leave **redirect URIs** empty.
 2. Configure the OAuth consent screen (Internal if Workspace-only).
-3. Put the client ID in `frontend/config.js`.
+3. Put the client ID in `.env` as `TCP_GOOGLE_CLIENT_ID`.
 4. Set `TCP_AUTH_ENABLED=true` and restart. Set both together — sign-in is only
    complete when the client id and `TCP_AUTH_ENABLED` are both configured.
 
-Deploy behind HTTPS and a same-origin reverse proxy (UI + `/api/`), which also
-avoids CORS, and keep the API port (`8123`) on the internal network rather than
-exposing it directly.
+Deploy behind HTTPS (a reverse proxy in front of the one container). The
+callback routes share the port with the UI, so protect them with
+`TCP_COMPUTE_TOKEN` (§6) rather than by network placement, and never set
+`TCP_TRUST_UNAUTHENTICATED_CALLBACKS=true` while that port is reachable by
+users.
 
 ---
 
@@ -350,11 +353,11 @@ On the **Airflow** machine:
    7200 s request timeout — a large survey takes a while.
 2. Set on the **worker**:
    ```env
-   DRONE_API_BASE=http://<this-host-ip>:8123    # how Airflow reaches THIS API
+   DRONE_API_BASE=http://<this-host-ip>:8200    # how Airflow reaches THIS API
    DRONE_SERVICE_TOKEN=<same as TCP_COMPUTE_TOKEN>   # optional
    ```
    Not `localhost` — that would be Airflow's own container. The default if unset
-   is `http://host.docker.internal:8123`. The token is sent as `X-Service-Token`
+   is `http://host.docker.internal:8200`. The token is sent as `X-Service-Token`
    and must match `TCP_COMPUTE_TOKEN` here, or the callback gets a 401.
 
    **If the Airflow instance is not yours to configure**, you cannot set that
@@ -386,7 +389,7 @@ TCP_AIRFLOW_PASSWORD=...
 
 **Traffic goes both ways**, which is the part that is easy to get wrong: this
 API must reach Airflow on 8080, and the Airflow worker must reach this API on
-8123. Check both directions before blaming the DAG:
+8200. Check both directions before blaming the DAG:
 
 ```bash
 # this API -> Airflow
@@ -397,7 +400,7 @@ docker compose -f docker-compose.hub.yml exec api \
 curl -su admin:<pw> http://localhost:8080/api/v1/dags/drone_pipeline | head -c 200
 
 # Airflow worker -> this API   (run on the Airflow machine)
-curl -sf http://<this-host-ip>:8123/livez && echo OK
+curl -sf http://<this-host-ip>:8200/livez && echo OK
 ```
 
 ### e. Running the flow with Airflow on
@@ -617,23 +620,21 @@ is invisible to Postgres afterwards and there is no merge. Set the flag to
 
 - **`required variable HOST_MODELS_DIR is missing a value`** → set it in `.env`
   to the folder holding the `.pth` files. Compose refuses to start without it.
-- **`pull access denied` / `manifest unknown` on pull** → `IMAGE_API` or
-  `IMAGE_FRONTEND` in `.env` is pointing at a locally-built tag. Comment both
-  out and the hub file uses the published images.
+- **`pull access denied` / `manifest unknown` on pull** → `IMAGE_API` in
+  `.env` is pointing at a locally-built tag. Comment it out and the hub file
+  uses the published image.
 - **`could not select device driver "nvidia"`** → the NVIDIA Container Toolkit
   is not installed, or there is no GPU. See §3c for the CPU route.
-- **Port already in use** → with `docker-compose.yml`, set `TCP_API_PORT` /
-  `TCP_FRONTEND_PORT` in `.env`. `docker-compose.hub.yml` hardcodes its ports;
-  edit that file.
+- **Port already in use** → set `DRONE_API_PORT` in `.env`
+  (both compose files honour it).
 
 **The page loads but nothing works**
 
-- **Every request fails, or the UI sits at "loading"** → `window.API_BASE` in
-  `frontend/config.js` is wrong. It must be the API's address as the *browser*
-  sees it (`http://<host-ip>:8123`), and `""` only works behind a reverse proxy
-  that serves the UI and `/api/` from one origin. The failure message names the
-  URL it tried.
-- **Mixed content blocked** → the page is on HTTPS and `API_BASE` is HTTP.
+- **Every request fails, or the UI sits at "loading"** → `TCP_FRONTEND_API_BASE`
+  in `.env` is wrong. With the UI served by the API container it should be
+  unset (same origin); a full URL is only for a UI hosted elsewhere.
+  The failure message names the URL it tried.
+- **Mixed content blocked** → the page is on HTTPS and `TCP_FRONTEND_API_BASE` is HTTP.
   Browsers refuse this. Put both behind the same HTTPS origin.
 - **API 401 everywhere** → `TCP_AUTH_ENABLED=true` but no signed-in identity is
   being sent (client id not set, or a non-browser client). Set the client id, or
@@ -646,7 +647,7 @@ is invisible to Postgres afterwards and there is no merge. Set the flag to
 
 - **Detector "weights missing" / Analyze fails immediately** → the `.pth` files
   are not where `HOST_MODELS_DIR` points. Check with
-  `curl http://localhost:8123/api/v1/detectors` and look at `"available"` on the
+  `curl http://localhost:8200/api/v1/detectors` and look at `"available"` on the
   key your project uses.
 - **`502 AIRFLOW_TRIGGER_FAILED` the moment you enable Airflow** → almost always
   the missing combined DAG. The UI's buttons trigger `drone_pipeline`
@@ -661,7 +662,7 @@ is invisible to Postgres afterwards and there is no merge. Set the flag to
   in-process (§6a). The message classifies the cause (connection refused / timed
   out / DNS / no response).
 - **Airflow DAG fails calling back** → `DRONE_API_BASE` on the Airflow worker
-  must be `http://<this-PC-ip>:8123` and reachable — not `localhost`. Check both
+  must be `http://<this-PC-ip>:8200` and reachable — not `localhost`. Check both
   directions with the three curls in §6d. A `401` on the callback means
   `DRONE_SERVICE_TOKEN` does not match `TCP_COMPUTE_TOKEN`.
 - **Every callback gets `403 FORBIDDEN`** → the callback is resolving as

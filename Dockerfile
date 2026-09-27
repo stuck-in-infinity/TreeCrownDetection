@@ -1,14 +1,16 @@
 # ════════════════════════════════════════════════════════════════════════
-# Tree-Crown backend — "venv image, code mounted" build for the workstation.
+# Tree-Crown — one image for the backend API and the web UI.
 #
-# The image carries ONLY the virtual-env (/opt/venv) + system libs. The
-# application code is NOT copied in — it is bind-mounted at /code at run time
-# (see docker-compose). Data/output is bind-mounted at /data (empty initially),
-# detector weights at /models (read-only).
+# The image carries the virtual-env (/opt/venv), system libs and a copy of the
+# static frontend at /frontend, which the API serves at "/" on the same port
+# (app/main.py). The application code is NOT copied in — it is bind-mounted at
+# /code at run time (see docker-compose). Data/output is bind-mounted at /data
+# (empty initially), detector weights at /models (read-only).
 #
-# Defaults to CPU torch for portability. For an NVIDIA/CUDA build, pass
-#   --build-arg TORCH_INDEX=https://download.pytorch.org/whl/cu118
-# and use a CUDA base image + `--gpus all` (see README).
+# Two published variants, same Dockerfile, differing only in TORCH_INDEX:
+#   uavforaliens/treecrown-workstation:v1        CPU  (default TORCH_INDEX)
+#   uavforaliens/treecrown-workstation:v1-cu128  GPU  --build-arg TORCH_INDEX=https://download.pytorch.org/whl/cu128
+# publish.sh builds and pushes both.
 # ════════════════════════════════════════════════════════════════════════
 FROM python:3.10-slim
 
@@ -57,7 +59,12 @@ RUN pip install detectree2
 # 5) Enforce the pipeline's Pillow pin LAST.
 RUN pip install "Pillow==9.5.0"
 
-# Code is mounted here at run time; nothing is COPYed.
+# 6) The web UI. Last, so a frontend edit rebuilds only this layer. Compose
+# also bind-mounts ./frontend over it, so a running deployment picks up edits
+# without a rebuild; the baked copy is what runs without that mount.
+COPY frontend/ /frontend/
+
+# Code is mounted here at run time; it is not COPYed.
 WORKDIR /code
 EXPOSE 8000
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

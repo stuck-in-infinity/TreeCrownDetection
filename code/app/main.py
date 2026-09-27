@@ -1,10 +1,13 @@
 # FastAPI application entry point.
 
+import json
 import time
 from contextlib import asynccontextmanager
+from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.core.settings import settings
 from app.api.callbacks import is_callback_path
@@ -211,3 +214,44 @@ def readyz():
     }
 
 app.include_router(api_router)
+
+
+@app.get("/config.js", include_in_schema=False)
+def frontend_config():
+    """The page's runtime config, built from .env so it is set in one place.
+
+    Replaces the hand-edited frontend/config.js: a file of that name in the
+    frontend folder is shadowed by this route. Both values are public. no-cache
+    for the same reason as the static files below.
+    """
+    body = (
+        f"window.GOOGLE_CLIENT_ID = {json.dumps(settings.google_client_id or '')};\n"
+        f"window.API_BASE = {json.dumps(settings.frontend_api_base or '')};\n"
+    )
+    return Response(body, media_type="application/javascript",
+                    headers={"Cache-Control": "no-cache"})
+
+
+class _NoCacheStaticFiles(StaticFiles):
+    """StaticFiles that makes the browser revalidate on every load.
+
+    no-cache is a cheap 304 when nothing changed. Without it a browser can keep
+    running an old index.html for hours after the file was changed.
+    """
+
+    async def get_response(self, path, scope):
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
+# The web UI, served from this same process and port, so the page and the API
+# share one origin and API_BASE can stay "". Mounted last: routes registered
+# above (/api/..., /livez, /docs, /config.js) win over the catch-all "/" mount.
+# In the image main.py is /code/app/main.py, so parents[2] is / and the default
+# resolves to /frontend; in a checkout it resolves to the repo's frontend/.
+_frontend_dir = Path(settings.frontend_dir or Path(__file__).resolve().parents[2] / "frontend")
+if _frontend_dir.is_dir():
+    app.mount("/", _NoCacheStaticFiles(directory=_frontend_dir, html=True), name="frontend")
+else:
+    log.warning("frontend directory %s not found; serving the API only", _frontend_dir)

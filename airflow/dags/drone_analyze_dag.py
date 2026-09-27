@@ -15,7 +15,7 @@ The task posts to OUR backend:
 Success criterion: HTTP 200 AND response JSON status == "success".
 
 Config via env (set on the Airflow worker):
-    DRONE_API_BASE   default http://host.docker.internal:8123
+    DRONE_API_BASE   default http://host.docker.internal:8200
     DRONE_SERVICE_TOKEN  optional; sent as X-Service-Token if set
 """
 import json
@@ -27,7 +27,7 @@ from airflow import DAG
 from airflow.operators.python import PythonOperator
 from datetime import datetime, timedelta
 
-DRONE_API_BASE = os.environ.get("DRONE_API_BASE", "http://host.docker.internal:8123")
+DRONE_API_BASE = os.environ.get("DRONE_API_BASE", "http://host.docker.internal:8200")
 SERVICE_TOKEN = os.environ.get("DRONE_SERVICE_TOKEN", "")
 COMPUTE_URL = f"{DRONE_API_BASE.rstrip('/')}/api/v1/compute/analyze"
 

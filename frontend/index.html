@@ -2068,11 +2068,10 @@
 // and the DOM.
 let PID = null;
 const $ = (id) => document.getElementById(id);
-// The API base is set at deploy time. It defaults to the same origin, which
-// means putting the API and the UI behind one reverse proxy; that is the
-// recommended setup when sign-in is on. To override it, set window.API_BASE in
-// a script tag before this one, for instance when running the two on different
-// ports locally: window.API_BASE = "http://localhost:8123";
+// The API base comes from config.js, which the API generates from
+// TCP_FRONTEND_API_BASE in .env. Blank = same origin, which is what the
+// standard deployment gives: the API container serves this page. Set it only
+// when the UI is hosted apart from the API.
 const API_BASE = (window.API_BASE || "").replace(/\/$/, "");
 const apiBase = () => API_BASE;
 
@@ -2515,15 +2514,15 @@ function diagnoseFetchFailure(){
     return transportError("mixed_content",
       "This page is served over HTTPS but the API address is plain HTTP, so the "
       + "browser blocked the request before it was sent.",
-      "set window.API_BASE in config.js to an https:// address (or to \"\" if the "
-      + "API is served from this same site)",
+      "set TCP_FRONTEND_API_BASE in .env to an https:// address (or leave it "
+      + "blank if the API is served from this same site)",
       {api_base: base, page_origin: pageOrigin()});
   }
   if(base && !base.startsWith(pageOrigin())){
     return transportError("unreachable_cross_origin",
       "The API at " + base + " could not be reached from this page.",
       "usually one of three things: the server is down, the address in "
-      + "config.js is wrong, or the API is up but is not sending CORS headers "
+      + "TCP_FRONTEND_API_BASE (.env) is wrong, or the API is up but is not sending CORS headers "
       + "for this origin — open that address directly in a tab to tell them "
       + "apart",
       {api_base: base, page_origin: pageOrigin()});
@@ -2552,8 +2551,8 @@ function foreignResponse(res, text){
     return transportError("not_routed",
       "A 404 came back from the web server, not from the API — the request "
       + "never reached the application.",
-      "the API address or its path prefix is wrong. Check window.API_BASE in "
-      + "config.js, and check the proxy forwards /api/v1/ to the service. "
+      "the API address or its path prefix is wrong. Check TCP_FRONTEND_API_BASE "
+      + "in .env, and check the proxy forwards /api/v1/ to the service. "
       + "curl " + base + "/api/v1/health should return "
       + "{\"service\":\"tree-crown-pipeline\"}",
       {status, api_base: base, body_preview: preview(text)});
@@ -3855,9 +3854,8 @@ async function showKView(k){
 
   const q = "?run=" + encodeURIComponent(run);
   view.innerHTML = '<div class="review-sub">k = ' + k + '</div>'
-    // apiBase(), not a bare path: the UI and the API are served from different
-    // origins in the default deployment (:8200 and :8123), so a relative URL
-    // would ask nginx for an image it does not have.
+    // apiBase(), not a bare path: API_BASE may name another origin when the UI
+    // is hosted apart from the API, and a relative URL would then miss.
     + reviewImg(assetUrl(apiBase() + "/api/v1/project/clustering/" + k + "/tsne.png" + q),
                 "t-SNE plot for k=" + k, "plot")
     + '<div id="kClusters"><p class="muted">loading crowns…</p></div>';

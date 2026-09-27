@@ -23,7 +23,7 @@ from airflow import DAG
 from airflow.operators.python import PythonOperator
 from datetime import datetime, timedelta
 
-DRONE_API_BASE = os.environ.get("DRONE_API_BASE", "http://host.docker.internal:8123")
+DRONE_API_BASE = os.environ.get("DRONE_API_BASE", "http://host.docker.internal:8200")
 SERVICE_TOKEN = os.environ.get("DRONE_SERVICE_TOKEN", "")
 COMPUTE_URL = f"{DRONE_API_BASE.rstrip('/')}/api/v1/compute/finalize"
 
