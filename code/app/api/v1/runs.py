@@ -449,14 +449,23 @@ def trigger_finalize(
     # would mark run 4 as FINALIZING. The active row is put back afterwards.
     active_number = project.current_run or 1
     active_row = run_registry.get_run(db, project, active_number)
-    active_state_before = active_row.state if active_row else None
+    # With no row yet (a run opened by reconfigure), the project's state is what
+    # describes the active run.
+    active_state_before = active_row.state if active_row else project.state
 
     if target_run == active_number:
         _gate(db, project, _FINALIZE_FROM, "FINALIZING", "finalize")
     else:
         _gate(db, project, _NOT_BUSY, "FINALIZING", "finalize")
+        # The gate's mirror may also have CREATED the active row as FINALIZING.
+        # Left that way it counts as busy and the project never leaves
+        # FINALIZING, so re-read it rather than trusting the earlier lookup.
+        created = active_row is None
+        active_row = run_registry.get_run(db, project, active_number)
         if active_row is not None and active_state_before:
             active_row.state = active_state_before
+            if created:
+                active_row.started_at = None
             db.add(active_row)
             db.commit()
     run_registry.set_run_state(db, project, target_run, "FINALIZING")
