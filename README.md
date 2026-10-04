@@ -92,9 +92,10 @@ Other settings worth knowing (all documented inline in `.env.example`):
 
 ### b. Browser config — also from `.env`
 
-There is no frontend config file to create. The API generates `/config.js` for
-the page from two `.env` values on every load (restart the container after a
-change):
+There is no frontend config file. When the API serves `index.html` it writes
+two `.env` values into a JSON block in the page (restart the container after a
+change). Only these two reach the browser; a malformed value is dropped and
+logged:
 
 ```bash
 TCP_GOOGLE_CLIENT_ID=xxxx.apps.googleusercontent.com   # §5; public value
@@ -204,9 +205,9 @@ Two things to settle before your first run:
   already pointing at `host.docker.internal:8080`. If nothing is listening there
   every Analyze fails with `DISPATCH_FAILED`. Comment the line out for a plain
   single-machine install.
-- **The web UI's buttons need a DAG this repo does not ship.** Even with Airflow
-  running correctly, *Run analysis* and *Finalize* trigger `drone_pipeline`,
-  which is not here. See §6b.
+- **Airflow needs the two DAGs uploaded.** *Run analysis* and *Finalize*
+  trigger `drone_analyze` and `drone_finalize`; upload them from
+  `airflow/dags_yaml/` (YAML) or `airflow/dags/` (Python). See §6b.
 
 ---
 
@@ -295,21 +296,23 @@ anything.
 
 | Route | DAG | Triggered by | In this repo? |
 |---|---|---|---|
-| **A — the shipped DAGs** | `drone_analyze`, `drone_finalize` | `POST /api/v1/project/runs/analyze`, `POST /api/v1/project/runs/{n}/finalize` | **yes**, `airflow/dags/` |
-| **B — the combined DAG** | `drone_pipeline` (`TCP_DRONE_DAG_ID`) | `POST /api/v1/project/drone_api` — **what the web UI's buttons call** | **no**, you write it |
+| **A — the shipped DAGs** | `drone_analyze`, `drone_finalize` | `POST /api/v1/project/runs/analyze`, `POST /api/v1/project/runs/{n}/finalize` — **what the web UI's buttons call** | **yes**: YAML in `airflow/dags_yaml/` (dag-factory, see its README), or Python in `airflow/dags/`. Upload one set, not both |
+| **B — the combined DAG** | `drone_pipeline` (`TCP_DRONE_DAG_ID`) | `POST /api/v1/project/drone_api` — not called by the UI | **no**, you write it |
 
-**The web UI uses route B.** Enable Airflow without supplying `drone_pipeline`
-and *Run analysis* and *Finalize* fail with `502 AIRFLOW_TRIGGER_FAILED`,
-because Airflow 404s on an unknown DAG id. The shipped DAGs do not cover the UI.
+**The web UI uses route A.** *Run analysis* posts to `/runs/analyze` and
+*Finalize* to `/runs/{n}/finalize`, which start `drone_analyze` and
+`drone_finalize`. Upload one of the two shipped sets to Airflow:
 
-So pick one:
+- **YAML** — `airflow/dags_yaml/` (dag-factory). Setup, connection and variable
+  in its README.
+- **Python** — `airflow/dags/drone_*_dag.py`.
 
-- **Keep Airflow off** if you want the UI to work as shipped. Recommended unless
-  you specifically need external orchestration.
-- **Route A** — drive the API directly (curl, a script, your own DAG) against
-  `/runs/analyze` and `/runs/{n}/finalize`. The shipped DAGs serve exactly these.
-- **Route B** — write the combined DAG, and the UI works end to end. Contract in
-  §6c.
+Without them, *Run analysis* and *Finalize* fail with
+`502 AIRFLOW_TRIGGER_FAILED`, because Airflow 404s on an unknown DAG id. Or keep
+Airflow off and the backend computes in-process.
+
+Route B (`/project/drone_api` → `drone_pipeline`) is for other clients; the UI
+does not use it. Contract in §6c.
 
 ### c. Route B — what `drone_pipeline` must do
 
@@ -396,8 +399,9 @@ API must reach Airflow on 8080, and the Airflow worker must reach this API on
 docker compose -f docker-compose.hub.yml exec api \
   curl -sf http://host.docker.internal:8080/health && echo OK
 
-# does the DAG the UI needs actually exist?
-curl -su admin:<pw> http://localhost:8080/api/v1/dags/drone_pipeline | head -c 200
+# do the DAGs the UI needs actually exist?
+curl -su admin:<pw> http://localhost:8080/api/v1/dags/drone_analyze | head -c 200
+curl -su admin:<pw> http://localhost:8080/api/v1/dags/drone_finalize | head -c 200
 
 # Airflow worker -> this API   (run on the Airflow machine)
 curl -sf http://<this-host-ip>:8200/livez && echo OK
@@ -405,41 +409,40 @@ curl -sf http://<this-host-ip>:8200/livez && echo OK
 
 ### e. Running the flow with Airflow on
 
-Route B, the UI flow, once `drone_pipeline` is in place:
+The UI flow (route A), once `drone_analyze` and `drone_finalize` are uploaded:
 
 1. Open the UI, create a project, upload an orthomosaic.
-2. **Run analysis.** The button posts to `/project/drone_api`, which triggers
-   the DAG and returns a `dag_run_id` instead of `local:<job_id>`. The UI then
-   polls `GET /api/v1/project/drone_status/{dag_run_id}` and shows
-   `DAG status: running (poll N)`.
-3. Your DAG calls back with `execution_id`; the pipeline runs inside the API
-   container. Watch it there, not in Airflow — Airflow only holds an open
+2. **Run analysis.** The button posts to `/project/runs/analyze`, which
+   triggers `drone_analyze` and returns its `dag_run_id`. The UI follows the
+   run through `GET /api/v1/project/runs/status`.
+3. The DAG calls back to `/api/v1/compute/analyze`; the pipeline runs inside
+   the API container. Watch it there, not in Airflow — Airflow only holds an open
    request:
    ```bash
    docker compose -f docker-compose.hub.yml logs -f api
    ```
 4. The project reaches `AWAITING_LABELS`. Review clusters, name the groups,
    **Submit labels** — this is a plain API call and never involves Airflow.
-5. **Finalize** goes back through the DAG the same way, with `action:"finalize"`.
+5. **Finalize** posts to `/project/runs/{n}/finalize`, which goes through
+   `drone_finalize` the same way.
 6. Download the KMZ and CSVs.
 
-Route A is the same, minus the UI: `POST /api/v1/project/runs/analyze` with
+Scripted, it is the same calls: `POST /api/v1/project/runs/analyze` with
 `{"project_id": "...", "ortho_id": ...}`, then label, then
 `POST /api/v1/project/runs/{n}/finalize`.
 
 ### f. The callback status contract
 
-The shipped DAGs decide what happened from the HTTP status, and additionally
-require `status == "success"` in the JSON body:
+The shipped DAGs decide what happened from the HTTP status:
 
-| Status | DAG result |
-|---|---|
-| `200` + `status:"success"` | success; `asset_id` is pushed to XCom |
-| `400` / `404` | `AirflowSkipException` — a graceful skip, not a failure |
-| anything else | task fails, and the DAG run fails |
+| Status | Python DAGs (`airflow/dags/`) | YAML DAGs (`airflow/dags_yaml/`) |
+|---|---|---|
+| `200` | success; `asset_id` pushed to XCom | success; response in the task log |
+| `400` / `404` | `AirflowSkipException`, a skip | task fails (dag-factory limit) |
+| anything else | task fails, and the DAG run fails | same |
 
-A callback that loses the concurrency claim gets a `400`, i.e. a skip — correct,
-because the caller that won is producing the asset.
+A callback that loses the concurrency claim gets a `400`. That is correct
+either way (skip or fail), because the caller that won is producing the asset.
 
 Retries are safe: the DAG sends `dag_run_id` as `Idempotency-Key`, so a repeat
 of a run that already succeeded replays the stored result instead of recomputing
@@ -649,13 +652,11 @@ is invisible to Postgres afterwards and there is no merge. Set the flag to
   are not where `HOST_MODELS_DIR` points. Check with
   `curl http://localhost:8200/api/v1/detectors` and look at `"available"` on the
   key your project uses.
-- **`502 AIRFLOW_TRIGGER_FAILED` the moment you enable Airflow** → almost always
-  the missing combined DAG. The UI's buttons trigger `drone_pipeline`
-  (`TCP_DRONE_DAG_ID`), which this repo does not ship — the two DAGs in
-  `airflow/dags/` are `drone_analyze` and `drone_finalize`, and they serve the
-  `/runs/*` endpoints instead. See §6b: supply that DAG, drive `/runs/*`
-  directly, or leave Airflow off. Confirm with
-  `curl -su admin:<pw> <airflow>/api/v1/dags/drone_pipeline` — a 404 is this.
+- **`502 AIRFLOW_TRIGGER_FAILED` the moment you enable Airflow** → the DAG the
+  backend asked for is not on Airflow. The UI's buttons trigger `drone_analyze`
+  and `drone_finalize` (`TCP_ANALYZE_DAG_ID`, `TCP_FINALIZE_DAG_ID`); upload
+  them from `airflow/dags_yaml/` or `airflow/dags/`. Confirm with
+  `curl -su admin:<pw> <airflow>/api/v1/dags/drone_analyze` — a 404 is this.
 - **`DISPATCH_FAILED` on Analyze, on a machine with no Airflow** → `.env.example`
   ships `TCP_AIRFLOW_BASE_URL` **set**, so a fresh copy points at
   `host.docker.internal:8080` with nothing listening. Comment the line out to run

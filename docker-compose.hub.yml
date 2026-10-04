@@ -36,7 +36,7 @@ services:
       start_period: 30s
 
   api:
-    # v1 = CPU build, v1-cu128 = GPU build. Also serves the web UI at "/".
+    # Tags: v1 (CPU), v1-cu128 (GPU).
     image: ${IMAGE_API:-uavforaliens/treecrown-workstation:v1-cu128}
     pull_policy: always
     restart: unless-stopped
@@ -55,7 +55,7 @@ services:
     working_dir: /code
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
     ports:
-      # One host port for the UI and the API alike (DRONE_API_PORT in .env).
+      # UI, API and Airflow callbacks share this port.
       - "${DRONE_API_PORT:-8200}:8000"
     volumes:
       - ./code:/code

@@ -169,8 +169,7 @@ class Settings(BaseSettings):
     # the human endpoints require an ``X-User-Email`` header, which the frontend
     # sets after sign-in. The backend does not verify the Google token, so this
     # is only safe behind a gateway or on an internal network. google_client_id
-    # is the PUBLIC OAuth client id the browser signs in with; it reaches the
-    # page through the generated /config.js (app/main.py), not a file.
+    # is the public client id sent to the page.
     auth_enabled: bool = False
     google_client_id: str | None = None
 
@@ -186,15 +185,10 @@ class Settings(BaseSettings):
     # https://api.example.com. Leave blank to emit relative hrefs.
     public_base_url: str = ""
 
-    # Where the static web UI lives; the API serves it at "/" from the same port.
-    # Blank means the repo's frontend/ next to code/, which is /frontend in the
-    # image (baked in, and bind-mounted over by compose). If the folder does not
-    # exist the API runs without a UI.
+    # Web UI folder, served at "/". Blank: frontend/ next to code/.
     frontend_dir: str = ""                # TCP_FRONTEND_DIR
 
-    # The API origin the page calls, handed to it as window.API_BASE through the
-    # generated /config.js. Blank = same origin, which is right whenever this
-    # process serves the page. Set only for a UI hosted somewhere else.
+    # API URL the page calls. Blank: same origin.
     frontend_api_base: str = ""           # TCP_FRONTEND_API_BASE
 
     # Browser origins allowed to call this API: comma-separated, or "*" for any.

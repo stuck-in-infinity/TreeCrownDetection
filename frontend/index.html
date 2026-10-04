@@ -224,9 +224,8 @@
       border-radius:3px;padding:0 5px;font-size:11.5px;font-weight:600;margin:1px 2px}
   </style>
 
-  <!-- Runtime config, holding the public client id and the API base, then the
-       Google Identity Services SDK that sign-in needs. -->
-  <script src="config.js"></script>
+  <!-- Config block, filled in by the API from .env. Keep it exactly as is. -->
+  <script id="app-config" type="application/json">{}</script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 
   <style>
@@ -245,7 +244,7 @@
     #auth-gate header.top h1{margin:0;font-size:23px;font-family:Georgia,"Iowan Old Style","Times New Roman",serif;font-weight:600}
     #auth-gate header.top p{margin:4px 0 0;color:var(--muted);font-style:italic;font-size:14px}
     #auth-gate .meta-tag{font-size:12px;color:var(--green);border:1px solid var(--green);border-radius:20px;padding:2px 10px;background:var(--green-l);font-weight:600;text-transform:uppercase;letter-spacing:.05em}
-    #auth-gate main{flex:1;display:grid;grid-template-columns:1.1fr .9fr;gap:36px;align-items:center;padding:22px 0}
+    #auth-gate main{flex:1;display:grid;grid-template-columns:1fr 1.1fr;gap:36px;align-items:center;padding:22px 0}
     @media(max-width:880px){#auth-gate main{grid-template-columns:1fr;gap:24px;padding:16px 0}}
     #auth-gate .lede-column{max-width:580px}
     #auth-gate .kicker{font-size:11px;font-weight:bold;text-transform:uppercase;color:var(--warn);letter-spacing:.1em;margin-bottom:10px;display:inline-block}
@@ -266,11 +265,11 @@
     #auth-gate .gate-note{font-size:12px;color:var(--muted);max-width:240px;line-height:1.4}
     #auth-gate .gate-note b{color:var(--green-d)}
     #auth-gate .gerr{color:var(--err);font-size:12px;display:block;margin-top:4px;min-height:1em}
-    #auth-gate .grid-map-panel{background:var(--card);border:1px solid var(--line);border-radius:var(--r);aspect-ratio:1.15;position:relative;padding:18px;display:flex;flex-direction:column;justify-content:space-between;box-shadow:var(--shadow-1);overflow:hidden}
-    #auth-gate canvas#map-canvas{position:absolute;inset:0;width:100%;height:100%;z-index:1;cursor:crosshair}
-    #auth-gate .panel-hud,#auth-gate .panel-hud-bottom{position:relative;z-index:2;font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;display:flex;justify-content:space-between;pointer-events:none}
-    #auth-gate .panel-hud-bottom{align-items:flex-end}
-    #auth-gate .telemetry-ticker{color:var(--green);background:var(--green-l);padding:1px 6px;border-radius:10px;font-variant-numeric:tabular-nums}
+    #auth-gate main>*{min-width:0}
+    #auth-gate .gate-video{margin:0;background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:14px;box-shadow:var(--shadow-1);display:flex;flex-direction:column;gap:10px}
+    #auth-gate .gate-video .panel-hud{font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;display:flex;justify-content:space-between}
+    #auth-gate .gate-video figcaption{font-size:12.5px;color:var(--muted)}
+    #auth-gate .gate-video video{display:block;width:100%;aspect-ratio:16/9;border-radius:8px;background:#000}
     #auth-gate .stats-row{display:flex;gap:12px;flex-wrap:wrap;margin-top:30px;border-top:1px solid var(--line);padding-top:20px}
     #auth-gate .stat-pill{display:inline-flex;align-items:center;gap:8px;font-size:12px;border:1px solid var(--line);border-radius:20px;padding:4px 14px;color:var(--ink);background:var(--card)}
     #auth-gate .stat-pill i{width:6px;height:6px;border-radius:50%;background:var(--green)}
@@ -706,6 +705,22 @@
     #wt-tour video{display:block;width:100%;height:auto;
       max-height:min(70vh,620px);background:#151812;object-fit:contain}
     #wt-tour .wtv-cap{margin:8px 0 0;font-size:12.5px;color:var(--muted);line-height:1.5}
+    /* Project slides. */
+    #wt-deck .wtd-frame{position:relative;margin:14px 0 0;aspect-ratio:16/9;border:1px solid var(--line);
+      border-radius:var(--r);overflow:hidden;background:#fff;outline:none}
+    #wt-deck .wtd-frame:focus-visible{box-shadow:0 0 0 3px var(--green-l)}
+    #wt-deck .wtd-frame img{display:block;width:100%;height:100%;object-fit:contain}
+    #wt-deck .wtd-play,#wt-deck .wtd-frame video{position:absolute;left:5.4%;top:18%;width:63.75%;height:63.75%}
+    #wt-deck .wtd-play{display:flex;align-items:center;justify-content:center;gap:8px;margin:0;padding:0;
+      border:0;border-radius:0;background:rgba(0,0,0,.12);color:#fff;font-size:15px;font-weight:600;cursor:pointer}
+    #wt-deck .wtd-play span{padding:10px 18px;border-radius:999px;background:rgba(20,24,18,.8)}
+    #wt-deck .wtd-play:hover span{background:rgba(20,24,18,.95)}
+    #wt-deck .wtd-frame video{background:#000}
+    #wt-deck .wtd-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:10px 0 0;
+      font-size:13px;color:var(--muted)}
+    #wt-deck .wtd-bar button{margin:0;padding:6px 12px;border:1px solid var(--line);border-radius:6px;
+      background:var(--card);color:var(--ink);font-size:13px;cursor:pointer}
+    #wt-deck .wtd-bar button:disabled{opacity:.4;cursor:default}
     #wt-tour .wtv-cap b{color:var(--ink);font-weight:600}
     #wt-tour.wtv-dead .wtv-cap{display:none}
     .wtv-fallback{margin:0;font-size:13.5px;color:#f2efe4;padding:16px 18px;line-height:1.6}
@@ -1003,17 +1018,19 @@
           </div>
         </div>
 
-        <div class="grid-map-panel fade-slide del-3" aria-hidden="true">
+        <figure class="gate-video fade-slide del-3">
           <div class="panel-hud">
-            <div>Plate I: Active Grid</div>
-            <div>EPSG: Auto</div>
+            <div>Pipeline walkthrough</div>
+            <div>10 min</div>
           </div>
-          <canvas id="map-canvas"></canvas>
-          <div class="panel-hud-bottom">
-            <div>Crowns Mapped: <span class="telemetry-ticker">Active</span></div>
-            <div id="status-string">SYS: LOCKED_OK</div>
-          </div>
-        </div>
+          <video controls preload="metadata" playsinline
+                 src="treecrown_user_walkthrough_v2_clean.mp4"
+                 poster="treecrown_user_walkthrough_poster.jpg"
+                 aria-label="End-to-end walkthrough of the pipeline">
+            Your browser cannot play this video.
+          </video>
+          <figcaption>After sign-in, the <b>Walkthrough</b> tab also has the project slides.</figcaption>
+        </figure>
       </main>
 
       <footer class="fade-slide del-4">
@@ -1614,6 +1631,7 @@
           <b>The pipeline</b>
           <ul class="wt-steps" id="wt-rail">
             <li><a href="#/walkthrough#wt-intro"><span class="wt-dot" aria-hidden="true">&bull;</span><span class="wt-lbl">Start here<small>What this page is</small></span></a></li>
+            <li><a href="#/walkthrough#wt-deck"><span class="wt-dot" aria-hidden="true">&#9638;</span><span class="wt-lbl">Project slides<small>How it works</small></span></a></li>
             <li><a href="#/walkthrough#wt-tour"><span class="wt-dot" aria-hidden="true">&#9654;</span><span class="wt-lbl">Watch a run<small>Video and 9 steps</small></span></a></li>
             <li><a href="#/walkthrough#wt-s1"><span class="wt-dot" aria-hidden="true">1</span><span class="wt-lbl">Your image<small>What to upload</small></span></a></li>
             <li><a href="#/walkthrough#wt-s2"><span class="wt-dot" aria-hidden="true">2</span><span class="wt-lbl">Finding trees<small>Settings that matter</small></span></a></li>
@@ -1707,6 +1725,25 @@
             is no accuracy figure on this page, and none can be worked out from what we
             have. What we can show is <i>consistency</i>: run the same imagery twice and
             you get the same answer. Consistent is not the same as right.
+          </div>
+        </section>
+
+        <!-- Project slides: images in deck/, made from the project presentation. -->
+        <section class="wt-hero" id="wt-deck" tabindex="-1">
+          <span class="wt-kicker">Project slides</span>
+          <h2>How the pipeline works, in 16 slides</h2>
+          <p>
+            The method behind each step: the detector, the settings, the charts and
+            the outputs. Use the buttons, or the arrow keys once the slide is selected.
+          </p>
+          <div class="wtd-frame" id="wtd-frame" tabindex="0" aria-label="Project slides">
+            <img id="wtd-img" src="deck/slide-01.jpg" alt="Slide 1: What it does">
+            <button type="button" class="wtd-play" id="wtd-play" hidden><span>&#9654; Play the walkthrough</span></button>
+          </div>
+          <div class="wtd-bar">
+            <button type="button" id="wtd-prev" aria-label="Previous slide">&larr; Prev</button>
+            <span id="wtd-count" aria-live="polite"></span>
+            <button type="button" id="wtd-next" aria-label="Next slide">Next &rarr;</button>
           </div>
         </section>
 
@@ -2068,11 +2105,13 @@
 // and the DOM.
 let PID = null;
 const $ = (id) => document.getElementById(id);
-// The API base comes from config.js, which the API generates from
-// TCP_FRONTEND_API_BASE in .env. Blank = same origin, which is what the
-// standard deployment gives: the API container serves this page. Set it only
-// when the UI is hosted apart from the API.
-const API_BASE = (window.API_BASE || "").replace(/\/$/, "");
+// Config from the app-config block in <head>.
+const APP_CONFIG = (() => {
+  try { return JSON.parse($("app-config").textContent || "{}") || {}; }
+  catch(e){ return {}; }
+})();
+// Blank: same origin.
+const API_BASE = (APP_CONFIG.apiBase || "").replace(/\/$/, "");
 const apiBase = () => API_BASE;
 
 // PARAM_DOCS holds all the parameter documentation in one place.
@@ -2354,7 +2393,7 @@ document.addEventListener("click", (e) => {
 // All the backend needs is the user's email for its audit headers, so the token
 // is used once, to read /userinfo.
 const AUTH = { email:null, userId:null, token:null, client:null, ready:false };
-const CLIENT_ID = window.GOOGLE_CLIENT_ID || "";
+const CLIENT_ID = APP_CONFIG.googleClientId || "";
 // Sign-in only counts as configured when there is a real client id. Without
 // one the gate is skipped, so local development and unconfigured deployments
 // still work.
@@ -2426,6 +2465,7 @@ function signOut(){
 
 function onSignedIn(){
   const gate = $("auth-gate"); if(gate) gate.classList.add("hidden");
+  const gv = document.querySelector("#auth-gate video"); if(gv) gv.pause();  // hidden video keeps playing otherwise
   const who = $("whoami");
   if(who && AUTH.email){
     who.innerHTML = 'Signed in as <b>'+AUTH.email+'</b><button onclick="signOut()">Sign out</button>';
@@ -3854,8 +3894,7 @@ async function showKView(k){
 
   const q = "?run=" + encodeURIComponent(run);
   view.innerHTML = '<div class="review-sub">k = ' + k + '</div>'
-    // apiBase(), not a bare path: API_BASE may name another origin when the UI
-    // is hosted apart from the API, and a relative URL would then miss.
+    // apiBase(): API_BASE may point at another origin.
     + reviewImg(assetUrl(apiBase() + "/api/v1/project/clustering/" + k + "/tsne.png" + q),
                 "t-SNE plot for k=" + k, "plot")
     + '<div id="kClusters"><p class="muted">loading crowns…</p></div>';
@@ -4280,89 +4319,6 @@ function showOpenRunReview(p){
   if(p && REVIEW_STATES.includes(p.state)) loadClusterReview(CURRENT_RUN || 1);
 }
 
-//  Sign-in gate canvas (landing_I_grid), interactive canopy detections
-// Self-contained; stops drawing once the gate is hidden (after sign-in / bypass).
-function initGateCanvas(){
-  const cv=document.getElementById("map-canvas"); if(!cv) return;
-  const ctx=cv.getContext("2d");
-  let W,H,DPR,crowns=[],canopy=[],hoverX=0,hoverY=0,isHovering=false;
-  const gateHidden=()=>{ const g=$("auth-gate"); return !g || g.classList.contains("hidden"); };
-  function resize(){
-    DPR=Math.min(window.devicePixelRatio||1,2); W=cv.clientWidth; H=cv.clientHeight;
-    cv.width=W*DPR; cv.height=H*DPR; ctx.setTransform(DPR,0,0,DPR,0,0); setupCanopy(); setupCrowns();
-  }
-  // Very subtle orthomosaic tint, a few large, faint green washes so the panel
-  // reads as light aerial ground WITHOUT drowning the crown detections.
-  function setupCanopy(){
-    canopy=[]; const greens=["#6f8a63","#84a074","#5c7850","#9bb083"];
-    const n=Math.max(8, Math.round((W*H)/12000));
-    for(let i=0;i<n;i++){
-      canopy.push({x:Math.random()*W, y:Math.random()*H, r:28+Math.random()*50,
-        c:greens[(Math.random()*greens.length)|0], a:0.05+Math.random()*0.06});
-    }
-  }
-  // Detected crown polygons, the "detection overlay" layer (like overlay.png).
-  function setupCrowns(){
-    crowns=[]; const n=16;
-    for(let i=0;i<n;i++){
-      const cx=W*0.12+Math.random()*(W*0.76), cy=H*0.14+Math.random()*(H*0.72), r=15+Math.random()*22;
-      const vertices=[], numPoints=8+Math.floor(Math.random()*6);
-      for(let j=0;j<numPoints;j++){ const a=(j/numPoints)*Math.PI*2, wob=r*(0.85+Math.random()*0.3);
-        vertices.push({x:cx+Math.cos(a)*wob,y:cy+Math.sin(a)*wob}); }
-      crowns.push({cx,cy,r,vertices,isOak:Math.random()>0.4,conf:(0.82+Math.random()*0.17)});
-    }
-  }
-  function inPoly(px,py,v){ let inside=false;
-    for(let i=0,j=v.length-1;i<v.length;j=i++){ const xi=v[i].x,yi=v[i].y,xj=v[j].x,yj=v[j].y;
-      if(((yi>py)!==(yj>py))&&(px<(xj-xi)*(py-yi)/(yj-yi)+xi)) inside=!inside; }
-    return inside; }
-  function draw(){
-    if(!W||!H) return;
-    // 1) light ground tone + faint green washes
-    ctx.fillStyle="#f1f2e6"; ctx.fillRect(0,0,W,H);
-    for(const b of canopy){ ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,Math.PI*2);
-      ctx.fillStyle=b.c; ctx.globalAlpha=b.a; ctx.fill(); }
-    ctx.globalAlpha=1;
-    // 2) faint georeferencing grid + coord ticks
-    ctx.strokeStyle="rgba(34,40,31,0.06)"; ctx.lineWidth=0.5;
-    ctx.fillStyle="rgba(34,40,31,0.5)"; ctx.font="8px monospace";
-    const latStart=12.9710,latStep=0.0002,lonStart=77.5940,lonStep=0.0002,gs=60;
-    for(let x=gs,idx=0;x<W;x+=gs,idx++){ ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();
-      ctx.fillText((lonStart+idx*lonStep).toFixed(4)+"°E",x+4,12); }
-    for(let y=gs,idx=0;y<H;y+=gs,idx++){ ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();
-      ctx.fillText((latStart-idx*latStep).toFixed(4)+"°N",4,y-4); }
-    // 3) crown detections, outlines with translucent species fill (canopy shows through)
-    let active=-1;
-    if(isHovering) for(let i=0;i<crowns.length;i++){ if(inPoly(hoverX,hoverY,crowns[i].vertices)){active=i;break;} }
-    for(let i=0;i<crowns.length;i++){ const c=crowns[i], tgt=(i===active), v=c.vertices;
-      ctx.strokeStyle=c.isOak?"#1f3d26":"#8a5a12"; ctx.lineWidth=tgt?2.6:1.6;
-      ctx.fillStyle=c.isOak?"rgba(47,107,63,0.22)":"rgba(180,121,31,0.24)";
-      ctx.beginPath(); ctx.moveTo(v[0].x,v[0].y); for(let j=1;j<v.length;j++) ctx.lineTo(v[j].x,v[j].y); ctx.closePath(); ctx.fill(); ctx.stroke();
-      // centroid marker (a "detected crown" point)
-      ctx.beginPath(); ctx.arc(c.cx,c.cy,1.6,0,Math.PI*2); ctx.fillStyle=c.isOak?"#1f3d26":"#8a5a12"; ctx.fill();
-      if(tgt){ const mockLon=(lonStart+(c.cx/W)*0.001).toFixed(6), mockLat=(latStart-(c.cy/H)*0.001).toFixed(6);
-        // dashed bounding box
-        let minX=W,maxX=0,minY=H,maxY=0; for(const p of v){ if(p.x<minX)minX=p.x; if(p.x>maxX)maxX=p.x; if(p.y<minY)minY=p.y; if(p.y>maxY)maxY=p.y; }
-        ctx.setLineDash([3,3]); ctx.strokeStyle="rgba(34,40,31,0.5)"; ctx.lineWidth=1;
-        ctx.strokeRect(minX-4,minY-4,(maxX-minX)+8,(maxY-minY)+8); ctx.setLineDash([]);
-        // readable label card
-        const lines=["Species: "+(c.isOak?"Alpha":"Beta")+"  ("+Math.round(c.conf*100)+"%)",
-          mockLat+"°N",  mockLon+"°E"];
-        ctx.font="bold 9px -apple-system,sans-serif";
-        const bw=118, bh=40, bx=Math.min(c.cx+8,W-bw-4), by=Math.min(c.cy+8,H-bh-4);
-        ctx.fillStyle="rgba(255,253,247,0.94)"; ctx.strokeStyle=c.isOak?"#234e2e":"#8a5a12"; ctx.lineWidth=1;
-        ctx.fillRect(bx,by,bw,bh); ctx.strokeRect(bx,by,bw,bh);
-        ctx.fillStyle="#22281f"; lines.forEach((t,li)=>ctx.fillText(t,bx+7,by+13+li*11));
-        const s=$("status-string"); if(s) s.textContent="LAT: "+mockLat+"°N | LON: "+mockLon+"°E"; } }
-  }
-  const reduce=window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  function loop(){ if(gateHidden()) return; draw(); if(!reduce) requestAnimationFrame(loop); }
-  cv.addEventListener("mousemove",e=>{ const r=cv.getBoundingClientRect(); hoverX=e.clientX-r.left; hoverY=e.clientY-r.top; isHovering=true; if(reduce) draw(); });
-  cv.addEventListener("mouseleave",()=>{ isHovering=false; const s=$("status-string"); if(s) s.textContent="SYS: LOCKED_OK"; if(reduce) draw(); });
-  window.addEventListener("resize",resize);
-  resize();
-  reduce ? draw() : requestAnimationFrame(loop);
-}
 
 //  Boot
 // If a real Google client id is configured, keep the sign-in gate up and wait
@@ -4390,7 +4346,6 @@ window.addEventListener("load", ()=>{
 
   if(AUTH_CONFIGURED){
     initGis();                         // gate stays visible until sign-in / guest
-    initGateCanvas();                  // animate the landing plate
   } else {
     const gate = $("auth-gate"); if(gate) gate.classList.add("hidden");
     populateModels();
@@ -4691,6 +4646,57 @@ window.addEventListener("load", ()=>{
     var id = location.hash.split("#")[2], el = id && document.getElementById(id);
     if(el) el.scrollIntoView({ behavior: reduce() ? "auto" : "smooth", block: "start" });
   });
+})();
+</script>
+<script>
+/* Project slides viewer (#wt-deck). */
+(function(){
+  const TITLES = ["What it does", "How it works", "The crown detector: Detectree2",
+    "Detector engineering: resolution and tiles", "Detector engineering: tiles back to one map",
+    "Which orthomosaics work", "Watch the walkthrough", "Reading the group-count charts",
+    "Reading the crown map (t-SNE)", "The detection overlay", "Poor results? Use the Guide",
+    "Better settings, far more trees", "What you get as final output",
+    "Your files in FileBrowser", "Inside a run folder", "Thank you"];
+  const VIDEO_SLIDE = 6;                       // "Watch the walkthrough"
+  const el = id => document.getElementById(id);
+  const frame = el("wtd-frame"), img = el("wtd-img"), play = el("wtd-play"),
+        prev = el("wtd-prev"), next = el("wtd-next"), count = el("wtd-count");
+  if(!frame) return;
+  let i = 0, video = null;
+  const src = n => "deck/slide-" + String(n + 1).padStart(2, "0") + ".jpg";
+
+  function stopVideo(){ if(video){ video.pause(); video.remove(); video = null; } }
+  function show(n){
+    i = Math.max(0, Math.min(TITLES.length - 1, n));
+    stopVideo();
+    img.src = src(i);
+    img.alt = "Slide " + (i + 1) + ": " + TITLES[i];
+    count.textContent = (i + 1) + " / " + TITLES.length + " \u00b7 " + TITLES[i];
+    prev.disabled = i === 0;
+    next.disabled = i === TITLES.length - 1;
+    play.hidden = i !== VIDEO_SLIDE;
+    if(i + 1 < TITLES.length) new Image().src = src(i + 1);   // preload the next slide
+  }
+
+  play.addEventListener("click", () => {
+    video = document.createElement("video");
+    video.src = "treecrown_user_walkthrough_v2_clean.mp4";
+    video.controls = true; video.playsInline = true;
+    play.hidden = true;
+    frame.appendChild(video);
+    video.play().catch(() => {});
+  });
+  prev.addEventListener("click", () => show(i - 1));
+  next.addEventListener("click", () => show(i + 1));
+  frame.addEventListener("keydown", e => {
+    if(e.target.tagName === "VIDEO") return;   // arrows seek the video there
+    if(e.key === "ArrowLeft"){ show(i - 1); e.preventDefault(); }
+    if(e.key === "ArrowRight"){ show(i + 1); e.preventDefault(); }
+  });
+  window.addEventListener("hashchange", () => {
+    if(!location.hash.startsWith("#/walkthrough")) stopVideo();
+  });
+  show(0);
 })();
 </script>
 </body>

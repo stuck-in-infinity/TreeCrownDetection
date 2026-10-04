@@ -302,8 +302,7 @@ def update_project(
         })
 
     if pre_state in USED_RUN_STATES:
-        # pre_state, not project.state: the gate above already made it UPLOADED,
-        # and archiving that would leave the old run unlabellable.
+        # pre_state: the gate already set the project to UPLOADED.
         archive_current_run(db, project, archived_state=pre_state)
 
     project.params = new_params

@@ -1,6 +1,7 @@
 # FastAPI application entry point.
 
 import json
+import re
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -216,28 +217,34 @@ def readyz():
 app.include_router(api_router)
 
 
-@app.get("/config.js", include_in_schema=False)
-def frontend_config():
-    """The page's runtime config, built from .env so it is set in one place.
+# Public page config from .env, written into index.html when served.
+_CONFIG_PLACEHOLDER = '<script id="app-config" type="application/json">{}</script>'
+_CLIENT_ID_RE = re.compile(r"^[A-Za-z0-9._-]+\.apps\.googleusercontent\.com$")
+_API_BASE_RE = re.compile(r"^https?://[A-Za-z0-9.\-]+(:\d+)?(/[A-Za-z0-9._~\-/]*)?$")
 
-    Replaces the hand-edited frontend/config.js: a file of that name in the
-    frontend folder is shadowed by this route. Both values are public. no-cache
-    for the same reason as the static files below.
-    """
-    body = (
-        f"window.GOOGLE_CLIENT_ID = {json.dumps(settings.google_client_id or '')};\n"
-        f"window.API_BASE = {json.dumps(settings.frontend_api_base or '')};\n"
-    )
-    return Response(body, media_type="application/javascript",
-                    headers={"Cache-Control": "no-cache"})
+
+def _public_config() -> dict:
+    """Only these values reach the browser; malformed ones are dropped."""
+    client_id = (settings.google_client_id or "").strip()
+    if client_id and not _CLIENT_ID_RE.match(client_id):
+        log.warning("TCP_GOOGLE_CLIENT_ID is not a Google client id; not sent to the page")
+        client_id = ""
+    api_base = (settings.frontend_api_base or "").strip()
+    if api_base and not _API_BASE_RE.match(api_base):
+        log.warning("TCP_FRONTEND_API_BASE is not an http(s) URL; not sent to the page")
+        api_base = ""
+    return {"googleClientId": client_id, "apiBase": api_base}
+
+
+def _config_block(config: dict) -> str:
+    # Escape <, > and & so a value cannot close the <script> tag.
+    data = (json.dumps(config)
+            .replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026"))
+    return f'<script id="app-config" type="application/json">{data}</script>'
 
 
 class _NoCacheStaticFiles(StaticFiles):
-    """StaticFiles that makes the browser revalidate on every load.
-
-    no-cache is a cheap 304 when nothing changed. Without it a browser can keep
-    running an old index.html for hours after the file was changed.
-    """
+    """StaticFiles with Cache-Control: no-cache, so edits show on reload."""
 
     async def get_response(self, path, scope):
         response = await super().get_response(path, scope)
@@ -245,13 +252,27 @@ class _NoCacheStaticFiles(StaticFiles):
         return response
 
 
-# The web UI, served from this same process and port, so the page and the API
-# share one origin and API_BASE can stay "". Mounted last: routes registered
-# above (/api/..., /livez, /docs, /config.js) win over the catch-all "/" mount.
-# In the image main.py is /code/app/main.py, so parents[2] is / and the default
-# resolves to /frontend; in a checkout it resolves to the repo's frontend/.
+# Web UI on the same port as the API. Mounted last so API routes win.
+# Default folder: /frontend in the image, repo frontend/ in a checkout.
 _frontend_dir = Path(settings.frontend_dir or Path(__file__).resolve().parents[2] / "frontend")
 if _frontend_dir.is_dir():
+    @app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
+    @app.api_route("/index.html", methods=["GET", "HEAD"], include_in_schema=False)
+    def index_page():
+        """index.html with the config block filled in. Read on every request."""
+        try:
+            page = (_frontend_dir / "index.html").read_text(encoding="utf-8")
+        except OSError:
+            return Response("index.html not found", status_code=404, media_type="text/plain")
+        if _CONFIG_PLACEHOLDER in page:
+            page = page.replace(_CONFIG_PLACEHOLDER, _config_block(_public_config()), 1)
+        else:
+            log.warning("index.html has no app-config block; page served without config")
+        return Response(page, media_type="text/html; charset=utf-8", headers={
+            "Cache-Control": "no-cache",
+            "X-Content-Type-Options": "nosniff",
+        })
+
     app.mount("/", _NoCacheStaticFiles(directory=_frontend_dir, html=True), name="frontend")
 else:
     log.warning("frontend directory %s not found; serving the API only", _frontend_dir)

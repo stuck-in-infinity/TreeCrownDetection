@@ -1,18 +1,13 @@
 # ════════════════════════════════════════════════════════════════════════
 # Tree-Crown — workstation bundle
 #
-#   api       One container for the FastAPI backend AND the web UI, which the
-#             API serves at "/" (app/main.py). Baked venv + frontend copy in
-#             the image; code/frontend/data are bind-mounted. Detector weights
-#             are mounted from HOST_MODELS_DIR. Listens on 8000 in the
-#             container, published on the host as DRONE_API_PORT (8200): users,
-#             Google sign-in and Airflow's callbacks all use that one port.
-#   db        Postgres, opt-in behind the "postgres" profile.
+#   api       Backend API and web UI, on host port DRONE_API_PORT (8200).
+#   db        Postgres, only with --profile postgres.
 #
 # Airflow is NOT part of this bundle — it runs wherever the operator hosts it.
 # Both URLs are configurable in .env:
 #   TCP_AIRFLOW_BASE_URL  our backend -> Airflow REST (to start a DAG)
-#   (DAG side) DRONE_API_BASE  Airflow DAG -> our backend (default :8200)
+#   (DAG side) DRONE_API_BASE  Airflow DAG -> our backend (port 8200)
 # ════════════════════════════════════════════════════════════════════════
 
 # Docker's json-file driver keeps every line a container has ever written, with
@@ -63,7 +58,7 @@ services:
       dockerfile: Dockerfile
       args:
         TORCH_INDEX: "${TORCH_INDEX:-https://download.pytorch.org/whl/cpu}"
-    # v1 = CPU build, v1-cu128 = GPU build (set TORCH_INDEX to the cu128 index).
+    # Tags: v1 (CPU), v1-cu128 (GPU, needs the cu128 TORCH_INDEX).
     image: ${IMAGE_API:-uavforaliens/treecrown-workstation:v1-cu128}
     restart: unless-stopped
     logging: *default-logging
@@ -81,8 +76,7 @@ services:
     working_dir: /code
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
     ports:
-      # One host port (DRONE_API_PORT in .env) for the UI and the API alike; the
-      # container port is fixed at 8000. Airflow's DRONE_API_BASE uses it too.
+      # UI, API and Airflow callbacks share this port.
       - "${DRONE_API_PORT:-8200}:8000"
     volumes:
       - ./code:/code              # backend code (mounted, not baked)

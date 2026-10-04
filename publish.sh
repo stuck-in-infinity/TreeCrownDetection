@@ -1,17 +1,14 @@
 #!/usr/bin/env bash
-# Build the combined API + web-UI image in both variants and push them to
-# Docker Hub.
-#   <user>/treecrown-workstation:<tag>         CPU torch
-#   <user>/treecrown-workstation:<tag>-cu128   CUDA 12.8 torch
-# Usage:  ./publish.sh <dockerhub-username> [tag]      (tag defaults to v1)
-#         NO_PUSH=1 ./publish.sh <dockerhub-username>  (build and tag only)
+# Build and push <user>/treecrown-workstation:<tag> (CPU) and :<tag>-cu128 (GPU).
+# Usage: ./publish.sh <dockerhub-username> [tag, default v1]
+# Set NO_PUSH to 1 to build without pushing.
 set -euo pipefail
 USER="${1:?usage: ./publish.sh <dockerhub-username> [tag]}"
 TAG="${2:-v1}"
 REPO="$USER/treecrown-workstation"
 cd "$(dirname "$0")"
 
-# Pass the host's proxy through to pip/git inside the build, when one is set.
+# Pass the host proxy into the build.
 PROXY_ARGS=()
 for v in HTTP_PROXY HTTPS_PROXY NO_PROXY http_proxy https_proxy no_proxy; do
   [ -n "${!v:-}" ] && PROXY_ARGS+=(--build-arg "$v=${!v}")
