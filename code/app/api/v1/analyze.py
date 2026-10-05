@@ -61,6 +61,38 @@ def _analyze_payload(request: Request, project) -> dict:
     return payload
 
 
+# The state a /runs/* trigger leaves the project in before it starts the DAG.
+_HANDED_OFF = {"analyze": "ANALYZING", "finalize": "FINALIZING"}
+
+
+def _run_handed_off(request: Request, body: AnalyzeTrigger, project, db: Session,
+                    idempotency_key: str | None):
+    """Run what a /runs/* trigger started, when the combined DAG calls back.
+
+    The trigger has already gated the project, applied the run's settings and
+    chosen the run, exactly as it does before the per-job DAGs call
+    /compute/*, so the work is the same and is done by the same code. The
+    combined DAG passes back only project_id and action: a finalize finds its
+    run by the FINALIZING state the trigger put on it, which may be an older
+    run than the active one.
+    """
+    from app.api.v1 import compute
+    from app.db import models
+    from app.schemas.compute import ComputeRequest
+
+    run = project.current_run or 1
+    if body.action == "finalize":
+        row = (db.query(models.Run)
+               .filter_by(project_id=project.id, state="FINALIZING")
+               .order_by(models.Run.number.desc())
+               .first())
+        if row is not None:
+            run = row.number
+    req = ComputeRequest(execution_id=body.execution_id, project_id=project.id, run=run)
+    handler = compute.compute_finalize if body.action == "finalize" else compute.compute_analyze
+    return handler(request, req, db=db, _svc="system", idempotency_key=idempotency_key)
+
+
 @router.post("/project/drone_api")
 def drone_api(
     request: Request,
@@ -144,6 +176,8 @@ def drone_api(
 
     # With no Airflow configured, run the pipeline here instead.
     project = resolve_project(db, user, body.project_id, service=service)
+    if body.execution_id and project.state == _HANDED_OFF[body.action]:
+        return _run_handed_off(request, body, project, db, idempotency_key)
     if body.action == "finalize":
         from app.api.v1.finalize import run_finalize
         return run_finalize(request, body, project, db, user, idempotency_key, service=service)
