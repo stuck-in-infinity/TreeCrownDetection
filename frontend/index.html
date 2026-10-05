@@ -11,10 +11,7 @@
       --line:#e4e0d3; --green:#2f6b3f; --green-d:#234e2e; --green-l:#eaf1e7;
       --warn:#b4791f; --err:#a23b2f; --ok:#2f6b3f;
       --ink-2:#4a5043;                       /* secondary text colour        */
-      /* Values shared by all three views. Each view used to set its own
-         padding, radius and heading sizes, which is why the app, the guide and
-         the walkthrough never quite looked like one product. Everything below
-         is referenced rather than repeated, so a change reaches all three. */
+      /* Shared by all three views. */
       --r:6px; --r-sm:4px;                   /* card radius / control radius */
       --pad-card:17px 20px;                  /* every card in every view     */
       --pad-card-sm:12px 14px;               /* dense cards (rail, list rows)*/
@@ -35,30 +32,19 @@
       font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
     h1,h2,h3{font-family:Georgia,"Iowan Old Style","Times New Roman",serif;font-weight:600;letter-spacing:.1px}
     a{color:var(--green-d)}
-    /* One focus ring for the whole page, so keyboard users see the same
-       highlight everywhere. */
+    /* One focus ring for the whole page. */
     :focus-visible{outline:2px solid var(--green);outline-offset:2px;
       border-radius:var(--r-sm)}
     header.top{border-bottom:1px solid var(--line);background:linear-gradient(#fbfaf4,#f4f1e8)}
     .wrap{max-width:780px;margin:0 auto;padding:0 20px}
     header.top p{margin:4px 0 0;color:var(--muted);font-style:italic;font-size:14px}
 
-    /* #appbar: one header shared by all three views.
-       The app, the Parameter Guide and the Walkthrough each used to have their
-       own header, with a different title, links and link style, so the product
-       name disappeared as soon as you left the app and there was no way to see
-       which view you were on.
-
-       There is now a single bar, a direct child of <body> and outside all three
-       views, so the name and the switch never move. Which tab looks active is
-       decided in CSS from the body class the router already sets, so there is
-       no extra state to keep in step. */
+    /* #appbar: one header shared by all three views. The active tab comes from the body class. */
     #appbar{position:sticky;top:0;z-index:60;
       border-bottom:1px solid var(--line);
       background:linear-gradient(#fbfaf4,#f4f1e8);
       backdrop-filter:saturate(1.4) blur(6px)}
-    /* The -1px is because --appbar-h is the bar's outer height, border
-       included, since that is what the sticky rails below have to clear. */
+    /* -1px: --appbar-h includes the border. */
     #appbar .wrap{max-width:var(--col-app);min-height:calc(var(--appbar-h) - 1px);
       display:flex;align-items:center;gap:18px;padding-top:8px;padding-bottom:8px}
     /* Product name and mark. */
@@ -86,8 +72,7 @@
     .viewnav .vs svg{width:13px;height:13px;flex:none;opacity:.7}
     .viewnav .vs:hover{color:var(--green-d);background:rgba(255,253,247,.6)}
     .viewnav .vs:focus-visible{outline:2px solid var(--green);outline-offset:1px}
-    /* Highlight the current view. This reads the body classes the router sets,
-       so the highlight and the route cannot disagree. */
+    /* Highlight the current view from the router's body class. */
     body:not(.show-guide):not(.wt-show) .viewnav .vs-app,
     body.wt-show    .viewnav .vs-wt,
     body.show-guide .viewnav .vs-guide{
@@ -103,9 +88,7 @@
       .viewnav .vs{padding:6px 10px}
     }
     @media(max-width:700px){
-      /* The bar wraps onto two rows at this width, so everything sticky below
-         has to clear a taller bar. That is why --appbar-h is redefined here
-         rather than written out at each place that uses it. */
+      /* The bar wraps to two rows here, so it is taller. */
       :root{--appbar-h:106px}
       #appbar .wrap{flex-wrap:wrap;gap:8px 12px;padding-bottom:9px}
       .viewnav{margin-left:auto;order:3;width:100%;justify-content:space-between}
@@ -113,15 +96,12 @@
       #appbar #whoami{margin-left:auto}
     }
     @media(max-width:430px){
-      /* Drop the icons rather than the words. Three unlabelled icons are a
-         guessing game, and the labels still fit at this width. */
+      /* Drop the icons, keep the labels. */
       .viewnav .vs svg{display:none}
       .viewnav .vs{padding:7px 6px;font-size:12px}
     }
 
-    /* The page title, shared by the guide and the walkthrough. Each view used
-       to carry its own heading in its own header; both now sit at the top of
-       the view's content column and are styled the same way. */
+    /* Page title, shared by the guide and the walkthrough. */
     .view-head{margin:0 0 var(--gap)}
     .view-kicker{display:inline-block;font-size:10.5px;font-weight:700;
       text-transform:uppercase;letter-spacing:.11em;color:var(--warn);
@@ -235,8 +215,7 @@
     #auth-gate::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:1;background-image:linear-gradient(rgba(47,107,63,.02) 1px,transparent 1px),linear-gradient(90deg,rgba(47,107,63,.02) 1px,transparent 1px);background-size:40px 40px}
     #auth-gate .wrap{position:relative;z-index:2;max-width:1180px;margin:0 auto;padding:0 20px;min-height:100vh;display:flex;flex-direction:column;justify-content:space-between}
     #auth-gate header.top{border-bottom:1px solid var(--line);background:linear-gradient(#fbfaf4,#f4f1e8);margin:0 -20px;padding:14px 20px 12px}
-    /* The sign-in screen uses the same mark as #appbar, so the product is
-       recognisable before anyone signs in. */
+    /* Same mark as #appbar. */
     #auth-gate .gate-brand{display:flex;align-items:center;gap:12px}
     #auth-gate .gate-brand .brand-mark{width:38px;height:38px}
     #auth-gate .gate-brand .brand-mark svg{width:21px;height:21px}
@@ -260,8 +239,6 @@
     #auth-gate button.primary-sso:disabled{opacity:.5;cursor:default}
     #auth-gate button.primary-sso .g-icon{width:20px;height:20px;background:#fff;border-radius:2px;display:grid;place-items:center;flex:none}
     #auth-gate button.primary-sso .g-icon svg{width:12px;height:12px}
-    #auth-gate button.guest-btn{font:inherit;font-weight:600;border:1px solid #c7c1b0;border-radius:var(--r-sm);padding:12px 20px;cursor:pointer;background:transparent;color:var(--green-d);transition:background .15s}
-    #auth-gate button.guest-btn:hover{background:#f0ede3}
     #auth-gate .gate-note{font-size:12px;color:var(--muted);max-width:240px;line-height:1.4}
     #auth-gate .gate-note b{color:var(--green-d)}
     #auth-gate .gerr{color:var(--err);font-size:12px;display:block;margin-top:4px;min-height:1em}
@@ -288,15 +265,11 @@
     .hint{display:block;font-size:11px;line-height:1.35;color:var(--muted);
       margin:2px 0 2px;font-weight:400}
 
-    /* The Parameter Guide, at the route #/guide. It is the third top-level
-       view, next to #auth-gate and the app, and is shown by putting
-       .show-guide on <body>. The app is hidden rather than removed, so a
-       half-filled Step 3 form survives a visit to the guide. */
+    /* Parameter Guide (#/guide), shown via .show-guide on <body>. The app is hidden, not removed. */
     a.nav-link{color:var(--green-d);font-size:13px;font-weight:600;
       text-decoration:none;border-bottom:1px solid transparent;cursor:pointer}
     a.nav-link:hover{border-bottom-color:var(--green-d)}
-    /* The button into the guide. It replaced a plain text link beside the
-       sign-in label, which nobody found. */
+    /* The button into the guide. */
     a.guide-cta{display:inline-flex;align-items:center;gap:7px;
       background:var(--green);color:#fff;font-size:13px;font-weight:600;
       border-radius:var(--r-sm);padding:7px 14px;text-decoration:none;white-space:nowrap;
@@ -318,8 +291,7 @@
 
     #guide-page{display:none}
     body.show-guide #guide-page{display:block}
-    /* #appbar stays visible: it is the one part of the page that survives
-       every view change. Only the app's own content is swapped out. */
+    /* #appbar stays; only the app content is hidden. */
     body.show-guide > .page-layout{display:none}
 
     /* Narrower than the app's 1180px, because that is too wide to read text in. */
@@ -368,9 +340,7 @@
       border-top:1px solid var(--line)}
     li.run-row:first-child{border-top:0}
     .run-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-    /* The name is what reopens the project, so it is a <button> rather than a
-       styled <span>. That makes it reachable by keyboard and read out as an
-       action, and this row is the only way back into an earlier survey. */
+    /* A <button>, so it is keyboard reachable. */
     button.run-open{all:unset;cursor:pointer;display:block;width:100%;
       overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
       color:var(--link,#2f6b3f);text-decoration:underline;
@@ -421,10 +391,7 @@
       min-width:120px;min-height:120px;padding:6px;text-align:center;
       border:1px dashed var(--line);border-radius:var(--r-sm);
       color:var(--muted);font-size:12px}
-    /* Setting display above outranks the browser's own [hidden]{display:none},
-       so the tile has to be told to obey the attribute it is toggled with —
-       otherwise it sits there permanently and every loaded image gets a
-       "not available" twin. Same guard as #crownLb[hidden] and .wt-lb[hidden]. */
+    /* display above overrides [hidden], so restore it. */
     .thumb-bad[hidden]{display:none}
     .use-k{margin-top:12px}
 
@@ -449,10 +416,7 @@
       font-size:11.5px}
     details.fail-raw pre{margin:6px 0 2px;max-height:150px;font-size:11.5px}
 
-    /* Step 2: the orthomosaic library. It reuses the page's table, .pill,
-       .muted and button.link styles, so the rules below only cover what a
-       generated row needs: a checkbox the global input{width:100%} does not
-       stretch, and the column alignment. */
+    /* Step 2: the orthomosaic library. */
     .ortho-lib{margin-top:14px}
     .ortho-lib table{margin-top:2px}
     .ortho-lib td{vertical-align:middle}
@@ -488,8 +452,7 @@
     .run-banner{background:rgba(47,107,63,.08);border:1px solid var(--line);
       border-radius:var(--r-sm);padding:8px 12px;margin:0 0 10px;font-size:13px}
     .run-banner b{color:var(--green-d)}
-    /* The step-4 run picker. Sits above the banner: the picker is how you
-       choose, the banner is what you chose. */
+    /* The step-4 run picker. */
     .run-pick{border:1px solid var(--line);border-radius:var(--r-sm);
       padding:9px 12px;margin:0 0 10px;font-size:13px}
     .run-pick-h{color:var(--ink-2);margin-bottom:7px}
@@ -566,19 +529,12 @@
     .guide-wrap code{background:#f1eee4;border-radius:3px;padding:1px 5px;
       font-size:12.5px}
 
-    /* The Pipeline Walkthrough, at the route #/walkthrough. It is the fourth
-       top-level view, next to #auth-gate, the app and #guide-page, and is shown
-       by putting .wt-show on <body>, the same way .show-guide works. Every
-       selector below is inside #wt-page or named .wt- or #wt-, so none of it
-       can reach the app or the guide. To remove the feature, delete this block,
-       the #wt-page markup, the walkthrough script block, and the four marked
-       lines in route(). */
+    /* Pipeline Walkthrough (#/walkthrough), shown via .wt-show on <body>. All selectors are wt- scoped. */
     #wt-page{display:none}
     body.wt-show #wt-page{display:block}
     body.wt-show > .page-layout{display:none}   /* #appbar stays, as above */
 
-    /* The link into the walkthrough. It is quieter than a.guide-cta, so the
-       guide stays the main call to action in the header. */
+    /* The link into the walkthrough, quieter than a.guide-cta. */
     a.wt-cta{display:inline-flex;align-items:center;gap:7px;background:transparent;
       color:var(--green-d);font-size:13px;font-weight:600;border:1px solid #c7c1b0;
       border-radius:var(--r-sm);padding:6px 13px;text-decoration:none;white-space:nowrap;
@@ -595,8 +551,7 @@
       top:calc(var(--appbar-h) + 14px);
       max-height:calc(100vh - var(--appbar-h) - 28px);overflow-y:auto}
     @media(max-width:1000px){
-      /* A column flex with align-items:flex-start would shrink the children to
-         their content and push the page wider than the window, so stretch them. */
+      /* Stretch the children so the column does not overflow. */
       .wt-shell{flex-direction:column;align-items:stretch;gap:14px;padding-top:14px}
       /* Sit below the sticky #appbar rather than behind it. */
       .wt-rail{width:100%;position:sticky;top:var(--appbar-h);z-index:20;
@@ -650,15 +605,12 @@
     .wt-kicker{font-size:11px;font-weight:700;text-transform:uppercase;
       color:var(--warn);letter-spacing:.1em;display:block;margin-bottom:8px}
 
-    /* .wt-stage, .wt-hero and .wt-next are <section>s, so the page's global
-       `section{padding:var(--pad-card)}` and `section h2{display:flex}` apply to
-       them. Both are reset here rather than left to selector specificity. */
+    /* These are <section>s, so reset the global section padding and h2 flex. */
     .wt-stage{background:var(--card);border:1px solid var(--line);border-radius:var(--r);
       padding:0;margin:0 0 var(--gap);overflow:hidden;box-shadow:var(--shadow-1);
       scroll-margin-top:calc(var(--appbar-h) + 14px)}
     @media(max-width:1000px){
-      /* On narrow screens the step rail is sticky under the bar as well, so
-         clear the height of both. */
+      /* Clear the bar and the sticky step rail. */
       .wt-stage{scroll-margin-top:calc(var(--appbar-h) + 62px)}}
     .wt-head{display:flex;align-items:flex-start;gap:12px;width:100%;
       background:linear-gradient(#fbfaf4,#f4f1e8);border:0;border-bottom:1px solid var(--line);
@@ -689,15 +641,7 @@
     #wt-page a:focus-visible,#wt-page button:focus-visible{outline:2px solid var(--green);
       outline-offset:2px}
 
-    /* The step tour: the real interface in order, as a video and nine
-       screenshots. It sits on top of the walkthrough. The ids and classes are
-       wtv- for the video and wts- for the steps, so they cannot clash with the
-       app, the guide or the wt- walkthrough. The steps section does not reuse
-       .wt-stage or .wt-body: .wt-stage sets overflow:hidden, which stops
-       position:sticky working on the control bar, and .wt-body's rules would
-       override the step styles below. To remove the tour, delete this block,
-       the #wt-tour and #wt-steps markup, the #wts-lb dialog and the wireTour()
-       call. */
+    /* The step tour: a video (wtv-) and nine screenshots (wts-). Does not reuse .wt-stage, whose overflow:hidden breaks position:sticky. */
 
     /* The video panel. */
     #wt-tour .wtv-frame{margin:14px 0 0;border:1px solid var(--line);border-radius:var(--r);
@@ -729,10 +673,7 @@
     #wt-tour .wtv-miss b{display:block;font-size:11px;text-transform:uppercase;
       letter-spacing:.07em;color:var(--warn);margin-bottom:3px}
 
-    /* The steps section. It also carries .wt-stage, so the walkthrough's
-       collapse handler, which looks for the nearest .wt-stage, keeps working.
-       The one thing it has to undo is .wt-stage's overflow:hidden, which would
-       make the section scroll and stop position:sticky working on the bar. */
+    /* Also carries .wt-stage for the collapse handler; undoes its overflow:hidden so sticky works. */
     .wts-sec{overflow:visible}
     .wts-sec > .wt-head{border-radius:var(--r-sm) 4px 0 0}
     .wts-sec.wt-closed .wts-panel{display:none}
@@ -846,9 +787,7 @@
     /* Caveats, shown inline with the stage they apply to. */
     .wt-flag{border-radius:var(--r-sm);padding:10px 13px;margin:0 0 13px;font-size:13px;
       line-height:1.55;border:1px solid}
-    /* .wt-fh is the heading of a caveat and takes a line of its own. A plain
-       <b> inside a caveat stays inline, so numbers and names in the text can
-       still be emphasised. */
+    /* .wt-fh is a caveat heading on its own line; a plain <b> stays inline. */
     .wt-flag .wt-fh{display:block;font-size:11px;text-transform:uppercase;
       letter-spacing:.05em;margin-bottom:4px}
     .wt-flag b{font-weight:700;color:inherit}
@@ -958,8 +897,7 @@
   </style>
 </head>
 <body>
-  <!-- The Google sign-in screen. It covers the app until someone signs in, or
-       continues as a guest, and hides itself when auth is not configured. -->
+  <!-- Google sign-in screen. Hidden when auth is not configured. -->
   <div id="auth-gate">
     <div class="wrap">
       <header class="top fade-slide del-1">
@@ -1007,12 +945,8 @@
               </span>
               <span id="ssoLabel">Loading Google sign-in…</span>
             </button>
-            <button id="guestBtn" class="guest-btn" onclick="guestLogin()">
-              Continue as guest
-            </button>
             <div class="gate-note">
-              Institutional access via <b>Google SSO</b>, or continue as a
-              <b>guest</b> for a quick, unauthenticated session.
+              Institutional access via <b>Google SSO</b>.
               <span id="gateErr" class="gerr"></span>
             </div>
           </div>
@@ -1040,11 +974,7 @@
     </div>
   </div>
 
-  <!-- The application bar, shared by all three views. It is a direct child of
-       <body>, outside #guide-page and #wt-page, so leaving the app does not
-       take the product name with it. The switch below is three ordinary hash
-       links that the router already handles, and which one looks active is
-       decided in CSS from the body class the router sets. -->
+  <!-- The app bar, shared by all three views. -->
   <header class="top" id="appbar">
     <div class="wrap">
       <a class="brand" href="#/" aria-label="Tree-Crown Species Pipeline — home">
@@ -1112,9 +1042,7 @@
         <input id="ortho" type="file" accept=".tif,.tiff" multiple
                onchange="onOrthoPick()" />
         <button id="btnUpload" onclick="uploadOrtho()">Upload GeoTIFF</button>
-        <!-- Filled by onOrthoPick(), for example "3 files selected, 4.2 GB".
-             The file input itself only says "3 files", which is not enough to
-             judge a batch against a 5 GB project quota before sending it. -->
+        <!-- Selected file count and total size, filled by onOrthoPick(). -->
         <div id="orthoPick" class="note" style="display:none"></div>
         <div class="muted" style="margin:10px 0 3px">or fetch from a public Google Drive link (downloads server-side; large files take a while):</div>
         <input id="driveUrl" placeholder="https://drive.google.com/file/d/.../view" />
@@ -1122,8 +1050,7 @@
         <div id="lockNote" class="note" style="display:none"></div>
         <div id="oinfo" class="note"></div>
 
-        <!-- The library, drawn by renderOrthos() from
-             GET /api/v1/project/orthomosaics and hidden until there is one. -->
+        <!-- The library, drawn by renderOrthos(). -->
         <div id="orthoLib" class="ortho-lib" style="display:none"
              role="group" aria-labelledby="orthoLibLbl" aria-describedby="orthoLibHint">
           <label id="orthoLibLbl" style="margin-bottom:0">Orthomosaics in this project</label>
@@ -1158,15 +1085,12 @@
         </h2>
         <p class="lead">Pick the models and tune the run, then start detection + clustering.</p>
         <div id="runinfo" class="muted" style="margin-bottom:10px"></div>
-        <!-- Which orthomosaic this run will use. Filled by renderRunOrtho() and
-             hidden until the library has something in it. -->
+        <!-- Which orthomosaic this run uses, filled by renderRunOrtho(). -->
         <div id="runOrtho" class="note" style="display:none"></div>
         <label>Run name <span class="muted">(for your own reference)</span></label>
         <input id="runname" placeholder="run label" />
 
-        <!-- Shown only when the uploaded GeoTIFF carried no CRS, so nothing
-             could be detected. Without an answer here the pipeline would assume
-             EPSG:32643 and put every exported polygon in the wrong place. -->
+        <!-- Shown only when the GeoTIFF has no CRS. -->
         <div id="epsgFallback" class="note" style="display:none">
           <span class="warn">No CRS found in the GeoTIFF.</span>
           Enter the EPSG code of the survey's coordinate system — exports will be
@@ -1184,10 +1108,7 @@
           Defaults work well for most surveys. Each field explains what it does
           below; the <b>?</b> beside a name opens its full explanation.</p>
 
-        <!-- Every .hint below is filled in at startup from PARAM_DOCS in the
-             script block, matched on data-hint. Do not write the text here;
-             edit PARAM_DOCS, so the field hint, the FAQ and the Parameter Guide
-             always say the same thing. -->
+        <!-- Hints are filled from PARAM_DOCS (matched on data-hint). Edit the text there, not here. -->
         <details open>
           <summary>Detection — Detectree2 <span class="muted" style="font-weight:400">· finds individual crowns</span></summary>
           <div class="grid" style="margin-top:8px">
@@ -1220,8 +1141,7 @@
           </div>
         </details>
 
-        <!-- Collapsed by default. These two change how the imagery reaches the
-             network, so they should be changed on purpose. -->
+        <!-- Collapsed by default. -->
         <details>
           <summary>Advanced <span class="muted" style="font-weight:400">· changes how tiles reach the model</span></summary>
           <div class="grid" style="margin-top:8px">
@@ -1269,13 +1189,9 @@
 
       <!-- Step 4: label the clusters. -->
       <section>
-        <!-- Which of the runs ready for names these names apply to. Shown
-             only when there is more than one to choose between; filled by
-             renderLabelPicker(). The picker is how you choose a run, the
-             banner below is confirmation of what you chose. -->
+        <!-- Run picker for labelling, filled by renderLabelPicker(). Shown only with more than one run. -->
         <div id="labelPicker" class="run-pick" style="display:none"></div>
-        <!-- Which run steps 4 and 5 apply to, shown only when it is not the
-             newest one. Filled by renderRunBanner(). -->
+        <!-- Which run steps 4 and 5 apply to, filled by renderRunBanner(). -->
         <div id="runBanner" class="run-banner" style="display:none"></div>
         <h2>
           <span class="n">4</span> Label the clusters
@@ -1366,7 +1282,7 @@
           <div class="faq-body">
             <ul>
               <li>A drone survey exported as a <strong>GeoTIFF (.tif)</strong> — RGB or multispectral</li>
-              <li>A signed-in account (Google sign-in on the landing page), or continue as a guest</li>
+              <li>A signed-in account (Google sign-in on the landing page)</li>
               <li>Rough knowledge of the tree species present in your area</li>
             </ul>
             No programming skills required.
@@ -1495,14 +1411,9 @@
 
   </div><!-- /page-layout -->
 
-  <!-- The Parameter Guide, at the route #/guide. It is the third top-level
-       view. renderGuide() writes the text from PARAM_DOCS, so it always matches
-       the field hints in Step 3. Only settings the user can actually change
-       belong here; server-side settings they cannot reach do not. Preset
-       buttons and a glossary are still to be added. -->
+  <!-- Parameter Guide (#/guide). renderGuide() writes the text from PARAM_DOCS. -->
   <div id="guide-page">
-    <!-- No header of its own: #appbar stays on screen and names the view. What
-         is left is the page title, at the top of the reading column. -->
+    <!-- Page title; #appbar is the header. -->
 
     <div class="guide-wrap">
       <div class="view-head">
@@ -1616,12 +1527,7 @@
     </div>
   </div><!-- /guide-page -->
 
-  <!-- The Pipeline Walkthrough, at the route #/walkthrough. It is the fourth
-       top-level view and reads as a story rather than a reference: it follows
-       one survey from drone image to finished map layer, using figures from
-       runs that were actually done. The per-setting reference lives on
-       #guide-page and is linked to rather than repeated. Everything here is
-       named wt-. -->
+  <!-- Pipeline Walkthrough (#/walkthrough). Everything here is named wt-. -->
   <div id="wt-page">
     <!-- No header of its own, for the reason given in #guide-page. -->
 
@@ -2076,8 +1982,7 @@
       </main>
     </div>
 
-    <!-- The lightbox for the step tour. It sits inside #wt-page on purpose, so
-         hiding the route hides it too. -->
+    <!-- Lightbox for the step tour. Inside #wt-page so the route hides it too. -->
     <div class="wts-lb" id="wts-lb" hidden role="dialog" aria-modal="true"
          aria-label="Screenshot at full size">
       <div class="wts-lbbar">
@@ -2090,8 +1995,7 @@
   </div><!-- /wt-page -->
 
 
-  <!-- Full-size crown, opened from a review thumbnail. Sits here rather than
-       inside the review panel, which is rebuilt on every k change. -->
+  <!-- Full-size crown lightbox. Outside the review panel, which is rebuilt on every k change. -->
   <div id="crownLb" hidden role="dialog" aria-modal="true" aria-label="Crown image"
        onclick="closeCrown()">
     <img id="crownLbImg" alt="">
@@ -2101,8 +2005,7 @@
   <footer>Tree-Crown pipeline &middot; internal tool</footer>
 
 <script>
-// A small hand-written client. There is no framework on purpose: just fetch
-// and the DOM.
+// Plain fetch and DOM client, no framework.
 let PID = null;
 const $ = (id) => document.getElementById(id);
 // Config from the app-config block in <head>.
@@ -2114,16 +2017,8 @@ const APP_CONFIG = (() => {
 const API_BASE = (APP_CONFIG.apiBase || "").replace(/\/$/, "");
 const apiBase = () => API_BASE;
 
-// PARAM_DOCS holds all the parameter documentation in one place.
-// Three places used to describe these settings separately: the hints in Step 3,
-// the FAQ in the sidebar, and the Parameter Guide page. They drifted apart, so
-// all three are now drawn from this object and the text is written once.
-// `hint` is the one line under the field, and the rest makes the guide card.
-// The keys match the data-hint attributes in Step 3.
-//
-// `plain`, `analogy`, `down` and `up` are written for someone who flies a drone
-// and has no machine-learning background, so they describe what will change on
-// the map rather than the theory behind it.
+// PARAM_DOCS: the single source for parameter docs (Step 3 hints, FAQ, guide).
+// Keys match the data-hint attributes in Step 3.
 const PARAM_DOCS = {
   model_key: {
     title: "Detector model",
@@ -2235,9 +2130,7 @@ const PARAM_DOCS = {
   }
 };
 
-// How the guide page groups the cards. They are grouped rather than listed as
-// thirteen in a row, and ordered to match the form, so the page follows the
-// same order as the fields.
+// Guide card groups, in the same order as the form.
 const GUIDE_GROUPS = [
   { title: "Finding the trees",
     intro: "These decide how many trees are found and how their outlines are drawn.",
@@ -2253,8 +2146,7 @@ const GUIDE_GROUPS = [
     keys: ["backbone","pca_components","k_list"] }
 ];
 
-// A lookup the other way round. People arrive with a map that looks wrong
-// rather than with a parameter in mind, so each row links to the card for it.
+// Symptom to parameter lookup.
 const GUIDE_SYMPTOMS = [
   ["Large trees not being detected or getting croped", "The tile is smaller than the tree", ["tile_size","buffer"]],
   ["One outline covers several trees",         "Outlines are being merged too eagerly", ["iou_threshold"]],
@@ -2295,9 +2187,7 @@ function paramCard(key, d){
     + '</div>';
 }
 
-// Links inside the guide have to keep the "#/guide" prefix. A bare "#doc-x"
-// replaces the whole hash, loses the route, and sends the user back to the
-// pipeline.
+// Guide links must keep the "#/guide" prefix, or the route is lost.
 const docLink = (k, text) =>
   '<a href="#/guide#doc-'+k+'">'+esc(text || (PARAM_DOCS[k] || {}).title || k)+'</a>';
 
@@ -2333,9 +2223,7 @@ function renderGuide(){
   guideRendered = true;
 }
 
-// The guide's own copy of the zoom calculation. It reads its two demo inputs
-// rather than the real form, so a reader can try values without changing their
-// run.
+// The guide's own zoom calculator, using its demo inputs.
 function updateGuideZoom(){
   const t = $("gz_tile"), b = $("gz_buf"), m = $("gz_size"), out = $("gz_out");
   if(!t || !out) return;
@@ -2355,9 +2243,7 @@ function updateGuideZoom(){
     + '</div>';
 }
 
-// The hash router. "#/guide" shows the guide and anything else shows the app.
-// The app markup is hidden rather than removed, so a half-filled Step 3 form
-// survives a visit to the guide and back.
+// Hash router: "#/guide" shows the guide, anything else the app.
 function route(){
   const onGuide = location.hash.startsWith("#/guide");
   const onWalk  = location.hash.startsWith("#/walkthrough");          // + walkthrough
@@ -2365,15 +2251,13 @@ function route(){
   if(onWalk && window.wtInit) window.wtInit();                        // + walkthrough
   document.body.classList.toggle("show-guide", onGuide);
   document.body.classList.toggle("wt-show", onWalk);                  // + walkthrough
-  // The header's view switch styles itself from those two classes. A screen
-  // reader cannot see CSS, so mark the current tab explicitly as well.
+  // Mark the current tab for screen readers.
   const cur = onGuide ? "guide" : onWalk ? "wt" : "app";
   document.querySelectorAll("#appbar .vs").forEach(a =>
     a.setAttribute("aria-current", a.classList.contains("vs-" + cur) ? "page" : "false"));
   // A deep link looks like "#/guide#doc-conf_threshold", so scroll to that card.
   const anchor = (onGuide || onWalk) ? location.hash.split("#")[2] : null;  // ~ walkthrough
-  // Wait a frame. The guide was display:none until the line above, so it has no
-  // layout yet and scrollIntoView would land in the wrong place.
+  // Wait a frame so the guide has layout before scrolling.
   requestAnimationFrame(() => {
     const el = anchor && document.getElementById(anchor);
     if(el) el.scrollIntoView({behavior:"smooth", block:"start"});
@@ -2381,22 +2265,17 @@ function route(){
   });
 }
 
-// Clicking the link for the page you are already on fires no hashchange, so
-// nothing would move and the link would look broken. Scroll again explicitly.
+// Same-hash clicks fire no hashchange, so scroll explicitly.
 document.addEventListener("click", (e) => {
   const a = e.target.closest && e.target.closest('a[href^="#/guide#"]');
   if(a && a.getAttribute("href") === location.hash) route();
 });
 
-// Google sign-in, using the browser-side token flow.
-// The access token is held in memory only, never in localStorage or a cookie.
-// All the backend needs is the user's email for its audit headers, so the token
-// is used once, to read /userinfo.
+// Google sign-in (browser token flow).
+// The token stays in memory and is used once, to read /userinfo.
 const AUTH = { email:null, userId:null, token:null, client:null, ready:false };
 const CLIENT_ID = APP_CONFIG.googleClientId || "";
-// Sign-in only counts as configured when there is a real client id. Without
-// one the gate is skipped, so local development and unconfigured deployments
-// still work.
+// Without a real client id the gate is skipped.
 const AUTH_CONFIGURED = !!CLIENT_ID && !/PASTE_YOUR_CLIENT_ID/.test(CLIENT_ID);
 
 function authHeaders(){
@@ -2407,8 +2286,7 @@ function authHeaders(){
 }
 
 function initGis(){
-  // Wait for the gsi/client script, which loads asynchronously, to define
-  // google.accounts.
+  // Wait for the async gsi/client script.
   if(!window.google || !google.accounts || !google.accounts.oauth2){
     return setTimeout(initGis, 150);
   }
@@ -2435,17 +2313,6 @@ function requestLogin(){
   AUTH.client.requestAccessToken();   // shows the consent popup
 }
 
-// Continue as a guest, for testing only. This skips Google sign-in and uses a
-// fixed placeholder identity, so the app still has something to send as
-// X-User-Email and X-User-Id for the audit log and project ownership. Every
-// guest shares this one identity, and therefore sees the same projects.
-function guestLogin(){
-  gateError("");
-  AUTH.email = "guest@local.com";
-  AUTH.userId = "guest";
-  onSignedIn();
-}
-
 async function fetchUserInfo(){
   if(!AUTH.token) return;
   try{
@@ -2470,54 +2337,24 @@ function onSignedIn(){
   if(who && AUTH.email){
     who.innerHTML = 'Signed in as <b>'+AUTH.email+'</b><button onclick="signOut()">Sign out</button>';
   }
-  // The app can make authenticated calls from here. The order matters: restore
-  // the tab's open project first, so the past-runs list is drawn with that row
-  // already marked as open.
+  // Restore the open project first, so the past-runs list marks it.
   populateModels();
   restoreOpenProject().then(loadMyProjects);
 }
-// Logs live on the server only, in each run's logs/ folder. The page shows no
-// log of its own, so log() does nothing. The call sites still work but write
-// nothing to the page or the browser console.
+// Logs live on the server; log() is a no-op.
 function log(msg){ /* no-op — server-side logging only */ }
-// The identity headers set after Google sign-in. The backend reads
-// X-User-Email and X-User-Id for its activity log and for project ownership.
+// Identity headers the backend reads for audit and ownership.
 function headers(extra){ return Object.assign({}, authHeaders(), extra||{}); }
 
-//  transport diagnosis
-// Application errors are explained by the API, which is the only thing that
-// knows why it refused (see the note above ERROR text). Transport failures are
-// the exception, and necessarily so: when the request never arrives, or the
-// reply comes from nginx rather than from us, there IS no server to do the
-// explaining. Everything below is strictly about reaching the API. Not one line
-// of it describes an application error.
-//
-// The cases are worth separating because they have completely different fixes,
-// and they all used to surface as the same thing, `HTTP 404`.
+// Transport diagnosis: failures in reaching the API, not application errors.
 
-// Watchdog for a request that gets no answer. Right for a JSON call, which
-// either replies in milliseconds or is wedged, and WRONG for a body transfer,
-// which legitimately takes as long as the bytes take. A 161 MB ortho over a
-// LAN measured 35 s here; the next one over the same link blew past 60 s, the
-// browser aborted mid-body, and the server logged
-// `400 There was an error parsing the body` because the multipart stream just
-// stopped. Nothing was wrong with either end. So the two cases get two
-// different budgets, and uploads get the stall watchdog below instead.
+// Timeout for JSON calls. Uploads use the stall watchdog below instead.
 const API_TIMEOUT_MS = (window.API_TIMEOUT_MS || 60000);
 
-// Uploads are watched for SILENCE, not for elapsed time: an upload that is
-// still moving bytes is healthy however long it runs, and one that has moved
-// none for this long is not going to recover. XHR is what makes this possible ,
-// fetch() reports no upload progress, so with fetch the only measurable thing
-// is total duration, which is exactly the wrong thing to measure.
+// Uploads are aborted on silence, not on total time.
 const UPLOAD_STALL_MS = (window.UPLOAD_STALL_MS || 120000);
 
-// The Drive fetch is a small JSON POST whose response is withheld until the
-// SERVER has finished downloading, so the client budget must clear the server's
-// own ceiling (TCP_ORTHO_TRANSFER_TIMEOUT_MIN, default 45 min). Deliberately
-// higher: when a Drive transfer runs long the user should get the server's 408
-// TRANSFER_TIMEOUT, which says what happened and what to do, rather than this
-// page giving up first and leaving them guessing.
+// The Drive fetch waits for the server's download, so this exceeds the server's own limit.
 const DRIVE_TIMEOUT_MS = (window.DRIVE_TIMEOUT_MS || 50 * 60 * 1000);
 
 function transportError(kind, message, hint, extra){
@@ -2529,15 +2366,8 @@ function transportError(kind, message, hint, extra){
   return e;
 }
 
-// What we can work out about a fetch() rejection. The browser deliberately
-// refuses to say why, reporting "CORS" vs "no such host" vs "certificate
-// rejected" would leak cross-origin information, so it always throws the same
-// opaque TypeError. We cannot ask it, but we can reason about the CONFIGURATION,
-// and configuration is what is actually wrong nearly every time.
-// One-line seams over `location`. `location.protocol` cannot be redefined in
-// Chrome, so without these the mixed-content branch below could only ever be
-// asserted by reading it, and the branch that never runs in a test is the one
-// that is wrong in production.
+// Guess why fetch() was rejected, from the page configuration.
+// Small wrappers over `location`, so tests can stub them.
 function pageIsHttps(){ return location.protocol === "https:"; }
 function pageOrigin(){ return location.origin; }
 
@@ -2574,13 +2404,7 @@ function diagnoseFetchFailure(){
     {api_base: base || location.origin});
 }
 
-// A response arrived, but not from us. Distinguishing this from a real API
-// error is the whole game: an nginx 404 and an application 404 are the same
-// three digits and completely different problems.
-//
-// Two signals, together: our middleware stamps X-Request-Id on every /api/
-// response, and every API error is JSON. A reply with neither did not come from
-// the application.
+// A reply with no X-Request-Id that is not JSON did not come from the API.
 function foreignResponse(res, text){
   const status = res.status;
   const stamped = !!res.headers.get("X-Request-Id");
@@ -2635,8 +2459,7 @@ function foreignResponse(res, text){
 
 function preview(text){
   if(!text) return null;
-  // Strip tags so an nginx error page reads as one line, and keep it short ,
-  // the point is recognising WHICH server answered, not reading its markup.
+  // Strip tags and keep it short.
   const flat = String(text).replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
   return flat.slice(0, 200) || null;
 }
@@ -2644,14 +2467,7 @@ function preview(text){
 async function api(path, opts={}){
   const url = apiBase() + path;
 
-  // Without this a hung request hangs forever with the UI showing nothing but
-  // a spinner, which is indistinguishable from "still working" on a job that
-  // legitimately takes minutes.
-  //
-  // `opts.timeoutMs` overrides the default for the calls that are legitimately
-  // slow, currently the Drive fetch, which blocks until the server has pulled
-  // the whole file. Body uploads do not belong here at all: they go through
-  // apiUpload(), which watches for a stall instead of a deadline.
+  // Abort hung requests. `opts.timeoutMs` overrides the default for slow calls.
   const timeoutMs = opts.timeoutMs || API_TIMEOUT_MS;
   const fetchOpts = Object.assign({}, opts);
   delete fetchOpts.timeoutMs;
@@ -2682,11 +2498,7 @@ async function api(path, opts={}){
   const isJson = ct.includes("application/json");
 
   if(!isJson){
-    // Read it as text so the diagnosis can quote what actually came back.
-    // Previously this branch assigned the Response OBJECT to `body`, so a
-    // non-JSON error became the string "HTTP 404" and, worse, a non-JSON
-    // SUCCESS was returned to the caller as a Response and used as if it were
-    // data. Both are fixed by refusing to guess.
+    // Read as text so the diagnosis can quote the reply.
     let text = "";
     try{ text = await res.text(); }catch(_){}
     throw foreignResponse(res, text);
@@ -2710,9 +2522,7 @@ async function api(path, opts={}){
     }
     const msg = `${body.error.code}: ${body.error.message}`;
     const err = new Error(msg);
-    // Additive: the message string is unchanged, so every existing catch that
-    // prints e.message behaves exactly as before. New handlers switch on
-    // e.code (the §10 machine code) to show a specific, actionable message.
+    // The message is unchanged; handlers can switch on e.code.
     err.code = body.error.code || null;
     err.status = res.status;
     err.detail = body.error;
@@ -2721,16 +2531,7 @@ async function api(path, opts={}){
   return body;
 }
 
-//  uploading a body
-// Same contract as api(), resolves to the parsed JSON, throws the same shaped
-// errors, but built on XMLHttpRequest rather than fetch, for one reason:
-// upload progress. fetch() cannot report how far a request body has got, so
-// the only thing it lets you time is the whole transfer, and timing the whole
-// transfer is what broke multi-ortho uploads (see API_TIMEOUT_MS).
-//
-// With XHR the watchdog can ask the question that actually matters, "has this
-// moved recently?", and the user gets a percentage instead of the word
-// "uploading…" sitting still for two minutes on a 500 MB file.
+// Upload a body. Same contract as api(), but XHR, for upload progress.
 function apiUpload(path, formData, opts={}){
   const url = apiBase() + path;
   const onProgress = opts.onProgress || null;
@@ -2739,8 +2540,7 @@ function apiUpload(path, formData, opts={}){
     const xhr = new XMLHttpRequest();
     xhr.open("POST", url, true);
 
-    // Never set Content-Type: the browser has to add the multipart boundary,
-    // and naming the type by hand silently drops it.
+    // Never set Content-Type: the browser adds the multipart boundary.
     const h = headers(opts.headers);
     Object.keys(h).forEach(k => { if(h[k] != null) xhr.setRequestHeader(k, h[k]); });
 
@@ -2756,8 +2556,7 @@ function apiUpload(path, formData, opts={}){
       arm();                                  // bytes moved — the clock restarts
       if(onProgress && ev.lengthComputable) onProgress(ev.loaded, ev.total);
     };
-    // The body is up; the server is now doing the work (raster metadata, the
-    // DB row). Keep watching, because a wedged server is still a stall.
+    // Body sent; keep watching while the server works.
     xhr.upload.onload = arm;
 
     xhr.onerror = () => {
@@ -2776,10 +2575,7 @@ function apiUpload(path, formData, opts={}){
         {url, stall_ms: UPLOAD_STALL_MS}));
     };
 
-    // foreignResponse() reads .status and .headers.get(), so hand it something
-    // shaped like a Response. X-Request-Id is readable cross-origin because
-    // main.py puts it in the CORS expose_headers list, which is what lets
-    // foreignResponse tell "the API answered" from "a proxy answered".
+    // A Response-shaped object for foreignResponse().
     const asResponse = () => ({
       status: xhr.status,
       headers: {get: (name) => xhr.getResponseHeader(name)},
@@ -2789,8 +2585,7 @@ function apiUpload(path, formData, opts={}){
       disarm();
       const ct = xhr.getResponseHeader("content-type") || "";
       if(!ct.includes("application/json")){
-        // Same reasoning as api(): quote what actually came back rather than
-        // guessing. A proxy's HTML error page lands here.
+        // Quote what came back, e.g. a proxy's HTML error page.
         return reject(foreignResponse(asResponse(), xhr.responseText || ""));
       }
       let body;
@@ -2817,14 +2612,7 @@ function apiUpload(path, formData, opts={}){
   });
 }
 
-//  rendering an error
-// There is deliberately NO client-side dictionary of error text here. There
-// used to be: a map of code: friendly sentence, which meant the browser
-// showed a good message and everyone calling the API with curl got the terse
-// one. The explanation belongs to the API, not to one of its clients, so the
-// server now sends `message` and `hint` on every error and this page just
-// renders them. Anything added here would immediately be a second source of
-// truth that only one caller can see.
+// Rendering an error. The server sends `message` and `hint`; no error text lives here.
 function explain(e){
   const d = (e && (e.failure || e.detail)) || {};
   return esc(d.message || (e && e.message) || "Something went wrong.");
@@ -2838,13 +2626,7 @@ function explainWithHint(e){
   return out;
 }
 
-// A failure, rendered in full: what happened, where, what to do, and the id to
-// quote. `explain` is still the one-liner for inline slots; this is for the
-// places where a run has actually died and the user needs somewhere to go.
-//
-// Order is deliberate, the sentence first, the remedy second, the forensics
-// last and folded away. A user who can fix it themselves never has to read a
-// stack trace; an engineer who needs the trace can still get at it.
+// Full failure view: message, hint, then the raw detail folded away.
 function explainFull(e){
   const d = (e && (e.failure || e.detail)) || {};
   const code = (e && e.code) || d.code || null;
@@ -2879,34 +2661,14 @@ function rememberProject(p){
   return p;
 }
 
-//  which project a call acts on
-// Every singular /api/v1/project* route resolves its project through
-// `get_project`, which reads an OPTIONAL `project_id` QUERY parameter and,
-// when it is absent, falls back to "this user's most recently updated
-// project" (api/deps.py, resolve_project).
-//
-// That fallback is right for exactly one situation, a session that has just
-// created its project and has no other, and quietly wrong for every other.
-// Reopen an earlier survey from "Your past runs" and an unpinned call lands on
-// the NEWEST project instead: an ortho uploaded into the wrong library, labels
-// submitted against the wrong run, and no error anywhere, because from the
-// server's side the request was perfectly valid.
-//
-// So nothing is left unpinned. Every call that has a PID sends it.
+// Which project a call acts on. Every call with a PID sends it, never relying on the server's "latest project" fallback.
 function withPid(path){
   if(!PID) return path;                       // pre-create; the server 404s, correctly
   return path + (path.indexOf("?") >= 0 ? "&" : "?")
               + "project_id=" + encodeURIComponent(PID);
 }
 
-// Same job as withPid(), for the URLs the BROWSER fetches rather than fetch().
-// Plots, crown thumbnails and download links are <img src> and <a href>, and
-// neither can carry the X-User-Email header that api() adds, so the server saw
-// them arrive with no project and no caller, fell back to "the newest project
-// owned by `default`", found none (projects are owned by the signed-in email,
-// or by guest@local.com) and answered 404 PROJECT_NOT_FOUND. Every plot and
-// every thumbnail on the review screen came out as "not available". Naming both
-// in the URL is what makes an image request identical to a JSON one.
+// Same as withPid(), for <img src> and <a href>, which cannot send headers.
 function assetUrl(u){
   if(!u) return u;
   let out = String(u);
@@ -2920,16 +2682,11 @@ function assetUrl(u){
   return out;
 }
 
-// The orthomosaic library is now editable for the life of the project, adding
-// one cannot disturb a run that already happened, because each run is pinned to
-// the single ortho it was launched with. The only time the controls close is
-// while a run (or another dataset edit) is actually in flight.
+// The library is editable except while a run or dataset edit is in flight.
 const BUSY_STATES = ["ANALYZING","FINALIZING","UPLOADING","DELETING"];
 function busyFromProject(p){ return !!p && BUSY_STATES.includes(p.state); }
 async function refreshProject(){
-  // Only refresh the project the user is actively working on. Never auto-adopt
-  // the server's "latest project" on a fresh load, that silently reused the
-  // previous ortho and fired a run-2 instead of starting clean.
+  // Only refresh the open project; never auto-adopt the server's latest.
   if(!PID) return null;
   let p; try{ p=rememberProject(await api(withPid("/api/v1/project"))); }catch(e){ return null; }
   const busy=busyFromProject(p);
@@ -2939,16 +2696,13 @@ async function refreshProject(){
   if(busy){ ln.style.display="block"; ln.innerHTML='<span class="warn">Run in progress.</span> The orthomosaic library can\'t change while a run is going &mdash; it reopens as soon as the run finishes.'; }
   else { ln.style.display="none"; }
   refreshOrthos(p);
-  // An ortho exists but the server detected no CRS: the user must supply the
-  // EPSG, otherwise build_config falls back to a hardcoded 32643 and the export
-  // is silently georeferenced wrong.
+  // No CRS detected: the user must supply the EPSG.
   const needsEpsg = (p.orthos||[]).length > 0 && !p.source_epsg;
   $("epsgFallback").style.display = needsEpsg ? "block" : "none";
   if(!needsEpsg) $("p_epsg").value = "";
   const run=p.current_run||1;
   CURRENT_RUN=run;
-  // Restore the run this tab was working on, once, and only if it still
-  // exists. Then say which one it is.
+  // Restore this tab's run once, if it still exists.
   if(ACTIVE_RUN === null){
     const saved = loadActiveRun();
     if(saved && saved >= 1 && saved <= run) ACTIVE_RUN = saved;
@@ -2958,9 +2712,7 @@ async function refreshProject(){
   $("runinfo").innerHTML = run>1
     ? `Current run: <b>${run}</b>${p.run_name?(" &middot; "+p.run_name):""}. Edit parameters and click <b>Run analysis</b> to open another run.`
     : "Run 1. After it finishes, edit parameters (or pick a different orthomosaic) and click <b>Run analysis</b> again to open run 2.";
-  // Which runs are labellable changes whenever a run finishes, is labelled or
-  // is exported, all of which land here. Deliberately not awaited: the picker
-  // is a convenience and every caller wants the project back now.
+  // Not awaited: the picker is optional.
   refreshLabelPicker();
   refreshRunLists();
   return p;
@@ -2980,21 +2732,16 @@ async function refreshRunLists(){
   renderOrthos();
 }
 
-//  Orthomosaic library (step 2)
-// ORTHOS mirrors GET /api/v1/project/orthomosaics; SELECTED_ORTHO is the id the
-// next run will use. Everything the user sees is rendered from these two.
+// Orthomosaic library (step 2)
+// ORTHOS mirrors the server list; SELECTED_ORTHO is the id the next run uses.
 let ORTHOS = [];
 let SELECTED_ORTHO = null;
 let ORTHO_USAGE = null;
 
-// Attribute-safe escape. The page's esc() covers & < > only, which is right for
-// text nodes but not for a value going inside title="…".
+// Attribute-safe escape; esc() only covers text nodes.
 const escAttr = (s) => esc(s).replace(/"/g, "&quot;");
 
-// Selection is per project, so a second project on the same browser never
-// inherits the first one's choice. Wrapped because localStorage throws in
-// private-mode Safari and when cookies are blocked, the app must still work,
-// it just forgets the choice on reload.
+// Selection is per project. Wrapped because localStorage can throw.
 const orthoKey = () => "tcp.selectedOrtho." + PID;
 function saveOrthoSel(){
   try{ if(PID && SELECTED_ORTHO) localStorage.setItem(orthoKey(), SELECTED_ORTHO); }catch(e){}
@@ -3013,8 +2760,7 @@ function fmtBytes(n){
   return (n/(1024*1024*1024)).toFixed(1)+" GB";
 }
 
-// `project` is optional, passing the project we just fetched saves a round
-// trip when refreshProject() is the caller.
+// `project` is optional and saves a round trip.
 async function refreshOrthos(project){
   if(!PID){ ORTHOS=[]; ORTHO_USAGE=null; renderOrthos(); return; }
   try{
@@ -3025,10 +2771,7 @@ async function refreshOrthos(project){
     // Non-fatal: leave whatever is on screen rather than blanking the step.
     return;
   }
-  // Restore the selection, in the order that respects the user most:
-  //   1. what they picked in this browser for THIS project (survives reload),
-  //   2. what the server already pinned to the current run (params.ortho_id),
-  //   3. the only ortho, when there is only one.
+  // Restore the selection: this browser's pick, then the run's ortho, then the only ortho.
   const ids = ORTHOS.map(o => o.id);
   if(!ids.includes(SELECTED_ORTHO)) SELECTED_ORTHO = null;
   if(!SELECTED_ORTHO){
@@ -3055,9 +2798,7 @@ function renderOrthos(){
     const dims = (o.width && o.height) ? (o.width+" × "+o.height+" px") : "size unknown";
     const epsg = o.crs_epsg ? ("EPSG:"+o.crs_epsg) : (o.crs ? esc(o.crs) : "no CRS");
     const bands = o.bands ? (o.bands+" bands") : "";
-    // The stem is what the server actually stored the file as. It is shown only
-    // when it differs from the uploaded name, i.e. when a name collided and was
-    // suffixed, so the user can see what it became.
+    // Show the stored stem only when it differs from the uploaded name.
     const stemNote = (o.stem + ".tif") !== o.filename
       ? ' <span class="pill" title="stored as">'+esc(o.stem)+'</span>' : "";
     rows +=
@@ -3072,9 +2813,7 @@ function renderOrthos(){
     +   '<td class="ortho-meta">'+epsg+'</td>'
     +   '<td class="ortho-meta">'+esc(fmtBytes(o.size_bytes))+'</td>'
     + '</tr>'
-    // Second row, spanning the table: the runs already done on this
-    // orthomosaic. Collapsed, and only fetched when opened, most people
-    // never look, and it is one request per ortho.
+    // Second row: runs on this orthomosaic, fetched when opened.
     + '<tr class="runs-row"><td colspan="5" class="runs-cell">'
     +   '<button type="button" class="runs-toggle" data-oid="'+escAttr(o.id)+'" '
     +     'onclick="toggleOrthoRuns(this.getAttribute(\'data-oid\'))">'
@@ -3101,14 +2840,7 @@ function renderOrthos(){
   renderRunOrtho();
 }
 
-// The library shows checkboxes, but a run takes exactly ONE orthomosaic ,
-// POST /runs/analyze carries a single ortho_id, and one run produces one KMZ.
-// So ticking a box unticks whatever was ticked before: the control looks like a
-// checkbox and behaves like a single pick. Unticking the current one is allowed
-// and simply leaves nothing selected; step 3 then says so rather than guessing.
-//
-// This is a deliberate deviation from native checkbox semantics, so the group
-// is labelled to say what it does, see #orthoLib's aria-describedby.
+// A run takes one orthomosaic, so the checkboxes behave as a single pick.
 function toggleOrtho(id, checked){
   SELECTED_ORTHO = checked ? id : null;
   if(checked) saveOrthoSel(); else clearOrthoSel();
@@ -3120,14 +2852,7 @@ function toggleOrtho(id, checked){
 // Kept: called from the row click target and from older call sites.
 function selectOrtho(id){ toggleOrtho(id, true); }
 
-/*  runs done on one orthomosaic
-   A project accumulates runs, and a run keeps its own results, labels and
-   outcome. This is where an earlier one is found again and picked up.
-
-   ACTIVE_RUN is the run steps 3-5 act on. Null means "the newest", which is
-   what every previous version of this page assumed and still the right default
-   after an analyze. It is kept in sessionStorage beside the open project, for
-   the same reason: a reload keeps your place, a new tab starts clean. */
+/* Runs on one orthomosaic. ACTIVE_RUN is the run steps 3-5 act on; null means the newest. */
 let ACTIVE_RUN = null;
 const ORTHO_RUNS = {};        // ortho id -> the runs the server listed
 let RUN_BANNER_ORTHO = null;  // the opened run's ortho filename, for the banner
@@ -3150,23 +2875,7 @@ function loadActiveRun(){
 // The run steps 3-5 should act on: what the user picked, else the newest.
 function targetRun(){ return ACTIVE_RUN || CURRENT_RUN || 1; }
 
-/*  choosing which run to label (step 4)
-   A project can hold several runs sitting at "waiting for names" at once —
-   the same orthomosaic analysed with different settings, kept side by side so
-   the best one can be picked after looking at the crowns. Whichever the user
-   judges best is the one that should get the species names.
-
-   Everything needed for that already existed: openRun() points steps 3-5 at a
-   run, submitLabels() posts to /runs/{n}/labels, and the server decides
-   can_label per run. What was missing was somewhere to CHOOSE. The only run
-   list on the page is folded inside each orthomosaic row up in step 2, two
-   clicks away and behind a disclosure most people never open — so from step 4,
-   where the decision is actually made, there was no sign another run was
-   labellable, let alone a way to switch to it. This is that missing control.
-
-   It lists every labellable run in the project, not only those on the selected
-   orthomosaic: openRun() re-ticks the run's ortho anyway, and a picker that
-   silently hides half the candidates would be worse than none. */
+/* Choosing which run to label (step 4). Lists every labellable run in the project. */
 let ALL_RUNS = null;              // every run in the project, or null if unread
 
 async function refreshLabelPicker(){
@@ -3175,8 +2884,7 @@ async function refreshLabelPicker(){
     const d = await api(withPid("/api/v1/project/runs"));
     ALL_RUNS = (d && d.runs) || [];
   }catch(e){
-    // A picker is a convenience. Failing to draw one must not disturb the
-    // labelling form underneath it, which works on its own.
+    // A picker failure must not break the labelling form.
     ALL_RUNS = null;
   }
   renderLabelPicker();
@@ -3216,9 +2924,7 @@ function renderLabelPicker(){
   el.style.display = "block";
 }
 
-// Switching from the picker must not throw the reader back up to step 2, which
-// is what openRun's scroll does, the whole point is that they are already in
-// step 4 and want to stay there.
+// Stay in step 4 instead of scrolling to step 2.
 async function pickLabelRun(n){
   await openRun(n, {scroll:false});
   const step = $("labelPicker");
@@ -3236,8 +2942,7 @@ function runWhen(iso){
   return d.toLocaleDateString(undefined, {day:"numeric", month:"short"});
 }
 
-// Plain words for a state. The state names are the server's vocabulary, not
-// the user's, and this page is read by people who never see the API.
+// Plain words for a server state.
 const RUN_WORDS = {
   CREATED:          "not started",
   UPLOADED:         "not started",
@@ -3278,12 +2983,9 @@ function renderOrthoRuns(orthoId){
   for(const r of list.slice().sort((a,b) => b.run - a.run)){
     const open = r.run === targetRun();
     const words = RUN_WORDS[r.state] || esc(r.state || "");
-    // can_label / can_finalize are decided by the server. Re-deriving them
-    // here from the state string would be a second copy of a rule that also
-    // depends on whether the run has labels.
+    // can_label / can_finalize come from the server.
     const usable = r.can_label || r.can_finalize || r.has_results;
-    // Where this run's settings came from, when it was started from an older
-    // run rather than from whatever happened to be on screen.
+    // Which older run the settings came from.
     const lineage = (r.params || {}).based_on_run;
     out += '<li class="orun' + (open ? " is-open" : "") + '">'
         +    '<span class="orun-n">Run ' + r.run + '</span>'
@@ -3310,8 +3012,7 @@ function renderOrthoRuns(orthoId){
 }
 
 // Point steps 3-5 at one run.
-// The settings a run was made with, keyed by the step-3 field that holds each
-// one. Anything not listed here is not something a run records.
+// Run settings, keyed by their step-3 field.
 const RUN_PARAM_FIELDS = {
   p_tile:"tile_size", p_buf:"buffer", p_iou:"iou_threshold",
   p_conf:"conf_threshold", p_det:"detections_per_image",
@@ -3319,10 +3020,7 @@ const RUN_PARAM_FIELDS = {
   p_pca:"pca_components", backbone:"model_name",
 };
 
-// Put a run's settings back into step 3, so "open run 3" means you can see what
-// it was run with and start the next run from there instead of retyping it.
-// Missing keys leave the field alone: an older run that never recorded a
-// setting should not silently reset it to a default that was never used.
+// Put a run's settings back into step 3. Missing keys leave the field alone.
 function applyRunParams(entry){
   if(!entry) return;
   const params = entry.params || {};
@@ -3345,8 +3043,7 @@ function applyRunParams(entry){
   validateParams();
 }
 
-// Find a run in whatever we already fetched, so opening a run does not depend
-// on the ortho's run list having been expanded first.
+// Find a run in what is already fetched.
 async function runEntry(n){
   for(const list of Object.values(ORTHO_RUNS)){
     const hit = (list || []).find(e => e.run === n);
@@ -3365,9 +3062,7 @@ async function openRun(n, opts){
   saveActiveRun();
   await refreshProject();
 
-  // Restore what this run was made with, and point step 2 at its orthomosaic,
-  // so "Run analysis" starts the next run from these settings rather than from
-  // whatever happened to be on screen.
+  // Restore the run's settings and select its orthomosaic.
   const entry = await runEntry(n);
   if(entry){
     applyRunParams(entry);
@@ -3468,10 +3163,7 @@ async function createProject(){
   }catch(e){ $("pinfo").innerHTML='<span class="err">'+e.message+'</span>'; }
 }
 
-// Both upload paths end here. The response is the serialized project, whose
-// `orthos` list now holds every ortho, so the new one is the entry that was
-// not there before. That is also how the (possibly suffixed) final stem is
-// reported: the server decides it, the UI shows what it decided.
+// Both upload paths end here. The new ortho is the entry that was not there before.
 function afterOrthoAdded(p, before, what){
   const added = (p.orthos||[]).find(o => !before.includes(o.id));
   if(added){
@@ -3490,9 +3182,7 @@ function afterOrthoAdded(p, before, what){
   refreshProject();
 }
 
-// Show the batch the user picked, with its total size, BEFORE anything is
-// sent. A 5 GB project quota is easy to blow past with three files, and the
-// native input's "3 files" tells you nothing about that.
+// Show the picked batch and its total size before upload.
 function onOrthoPick(){
   const box=$("orthoPick"); if(!box) return;
   const fs=[...($("ortho").files||[])];
@@ -3510,14 +3200,7 @@ function onOrthoPick(){
               + 'until the quota is reached and refuse the rest.</span>' : '');
 }
 
-// Multi-file upload. The endpoint takes ONE file per request, so a batch is a
-// sequence of requests, not a parallel fan-out, sending 5 GB of TIFFs at once
-// would also race the server's UPLOADING claim, which is per project and
-// exclusive: the second concurrent upload would simply be rejected.
-//
-// A rejection mid-batch (quota, count, a bad raster) stops the run and reports
-// what did get in. Carrying on would be worse: every remaining file would hit
-// the same wall and bury the real message under N copies of it.
+// Multi-file upload, one request per file in sequence. Stops at the first rejection.
 async function uploadOrtho(){
   if(!PID) return alert("Create a project first");
   const files=[...($("ortho").files||[])];
@@ -3530,9 +3213,7 @@ async function uploadOrtho(){
   try{
     for(let i=0;i<files.length;i++){
       const f=files[i];
-      // Live percentage, not a static "uploading…". These files are hundreds of
-      // MB; without it there is no way to tell a slow upload from a dead one,
-      // which is precisely the confusion the old 60 s cut-off created.
+      // Live upload percentage.
       const show = (pct) =>
         $("oinfo").innerHTML =
             (files.length>1 ? 'uploading <b>'+esc(f.name)+'</b> &mdash; '
@@ -3576,8 +3257,7 @@ async function uploadOrtho(){
   refreshProject();
 }
 
-// After a batch, select the last ortho that was not there before, so the tick
-// lands on something the user just added rather than on nothing.
+// After a batch, select the last newly added ortho.
 function selectNewest(p, before){
   const added=(p.orthos||[]).filter(o=>!before.includes(o.id));
   if(added.length){ SELECTED_ORTHO=added[added.length-1].id; saveOrthoSel(); }
@@ -3589,10 +3269,7 @@ async function uploadUrl(){
   $("oinfo").textContent="downloading from Drive (may take a while)…";
   const before=(ORTHOS||[]).map(o=>o.id);
   try{
-    // The server holds this request open for the whole Drive download, so the
-    // default 60 s watchdog would abort a transfer that is going fine. See
-    // DRIVE_TIMEOUT_MS: it clears the server's own ceiling on purpose, so a
-    // genuinely over-long download comes back as the server's 408.
+    // Long timeout: the server holds the request for the whole Drive download.
     const p=rememberProject(await api(withPid("/api/v1/project/orthomosaic/from-url"),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({url}),timeoutMs:DRIVE_TIMEOUT_MS}));
     log("ortho fetched from Drive"); afterOrthoAdded(p, before, "registered");
   }catch(e){
@@ -3609,10 +3286,7 @@ async function pollState(done,fail,stageEl){
     try{ const s=rememberProject(await api(withPid("/api/v1/project/runs/status"))); if(s.job&&s.job.current_stage) stageEl.textContent="stage: "+s.job.current_stage+"  ("+p.state+")"; }catch{}
     if(done.includes(p.state)) return p;
     if(fail.includes(p.state)){
-      // Carry the WHOLE failure record, not just its sentence. The server now
-      // classifies a run failure into a code, a stage, a hint and the raw
-      // exception; throwing only .message threw four fifths of that away and
-      // left the user staring at whatever text some library happened to use.
+      // Carry the whole failure record, not just the message.
       const le = p.last_error || {};
       const err = new Error(le.message || ("state " + p.state));
       err.code = le.code || null;
@@ -3623,9 +3297,7 @@ async function pollState(done,fail,stageEl){
   }
 }
 
-// Follow ONE run to its end. The project's state describes whichever run is
-// computing, so finalizing an older run leaves it reading the active run's
-// state instead. The run rows are per run, which is what this reads.
+// Follow one run to its end, reading its own row.
 async function pollRunState(n,done,fail,stageEl){
   while(true){
     await sleep(3000);
@@ -3653,18 +3325,13 @@ async function pollRunState(n,done,fail,stageEl){
 
 function numOrNull(id){ const v=$(id).value.trim(); return v===""?null:Number(v); }
 
-// img_size is a property of the chosen DINOv2 backbone (models.yaml), not a free
-// knob, read it off the selected option instead of asking the user.
+// img_size comes from the chosen DINOv2 backbone.
 function backboneImgSize(){
   const o=$("backbone").selectedOptions[0];
   return (o && +o.dataset.img) || 224;
 }
 
-//  Client-side parameter validation
-// Mirrors the bounds in PipelineParams (app/schemas/project.py). This is for
-// feel, not safety, the backend enforces the same rules, because params are
-// persisted onto the project and the API is also called by Airflow callbacks
-// and scripts that never touch this page. Keep the two in sync.
+// Client-side parameter validation. Mirrors PipelineParams (app/schemas/project.py); keep in sync.
 const PARAM_BOUNDS = {
   p_tile:  {min:1,   max:1000,   label:"tile_size"},
   p_buf:   {min:0,   max:500,    label:"buffer"},
@@ -3699,8 +3366,8 @@ function paramErrors(){
   return errs;
 }
 
-// Live "how big will a tree look" readout, shown in the Advanced block.
-// pixels_per_metre = min_size_test / (tile_size + 2 * buffer), GSD cancels.
+// Live "how big will a tree look" readout.
+// pixels_per_metre = min_size_test / (tile_size + 2 * buffer)
 function updateZoomNote(){
   const note = $("zoomNote"); if(!note) return;
   const foot = (+$("p_tile").value) + 2*(+$("p_buf").value);
@@ -3717,16 +3384,12 @@ function updateZoomNote(){
 
 function validateParams(){
   const errs = paramErrors();
-  // Never touch the button or the status line mid-run: analyze() owns both
-  // while a job is in flight, and re-enabling the button there would let the
-  // user fire a second run.
+  // Do not touch the button or status mid-run; analyze() owns them.
   const running = $("aprog") && $("aprog").style.display === "block";
   if(!running){
     const btn = $("btnAnalyze"); if(btn) btn.disabled = errs.length > 0;
     const info = $("ainfo");
-    // Only ever clear a message this function wrote. analyze() reports the
-    // run's outcome in the same element and then calls this from its finally,
-    // so clearing anything else wiped the result, and every failure message.
+    // Only clear a message this function wrote.
     if(info){
       if(errs.length){ info.innerHTML = '<span class="err">'+errs[0]+'</span>'; info.dataset.msg = "params"; }
       else if(info.dataset.msg === "params"){ info.innerHTML = ""; delete info.dataset.msg; }
@@ -3747,9 +3410,7 @@ async function analyze(){
     $("ainfo").innerHTML='<span class="err">Enter the source EPSG — it could not be detected from the GeoTIFF.</span>';
     return;
   }
-  // A run uses exactly one orthomosaic. Refuse inline here rather than letting
-  // the server answer 400 ORTHO_SELECTION_REQUIRED, so the message points at
-  // the control the user has to touch.
+  // A run needs exactly one orthomosaic.
   if(ORTHOS.length && !selectedOrtho()){
     $("ainfo").innerHTML='<span class="err">Pick which orthomosaic this run should use in step 2 &mdash; '
       + 'this project has '+ORTHOS.length+' of them.</span>';
@@ -3763,9 +3424,7 @@ async function analyze(){
       project_id: PID,
       run_name: $("runname").value.trim()||null,
       model_key: $("modelKey").value||null,
-      // Which ortho this run uses. Omitted when nothing is selected, which the
-      // server accepts only for a single-ortho project, the pre-library
-      // behaviour, unchanged.
+      // Which ortho this run uses; omitted when nothing is selected.
       ortho_id: SELECTED_ORTHO||undefined,
       source_epsg: numOrNull("p_epsg"),
       params:{
@@ -3780,16 +3439,11 @@ async function analyze(){
         model_name:$("backbone").value||undefined
       }
     };
-    // A new analysis always opens a NEW run and works on it. Leaving an older
-    // run selected here would point step 4 at the wrong clustering. Note the
-    // run these settings came from first, so the lineage survives the reset.
+    // A new analysis opens a new run; note the run its settings came from.
     if(ACTIVE_RUN) body.based_on_run = ACTIVE_RUN;
     ACTIVE_RUN = null; RUN_BANNER_ORTHO = null; saveActiveRun(); renderRunBanner();
     $("astage").textContent="triggering analyze…";
-    // The asynchronous trigger: it returns as soon as the run is dispatched,
-    // to Airflow's drone_analyze DAG or to a local thread, and the run is then
-    // followed through the project's own state. Nothing here depends on which
-    // of the two it was.
+    // Async trigger; the run is followed through the project state.
     const triggered=await api(withPid("/api/v1/project/runs/analyze"),
       {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
     rememberProject(triggered);
@@ -3805,30 +3459,17 @@ async function analyze(){
   }catch(e){
     $("ainfo").innerHTML=explainFull(e); $("ainfo").dataset.msg="run";
     log("analyze failed: "+e.message);
-    // ORTHO_NOT_FOUND / ORTHO_SELECTION_REQUIRED mean the client's view of the
-    // library is stale (another tab added one, say), re-read it so the user
-    // is choosing from what actually exists.
+    // The library view is stale, so re-read it.
     if(e && (e.code==="ORTHO_NOT_FOUND"||e.code==="ORTHO_SELECTION_REQUIRED")) refreshProject();
   }
-  // Re-enable via validateParams, not unconditionally: the user may have edited
-  // a field into an invalid state while the run was in flight.
+  // Re-enable via validateParams, as a field may now be invalid.
   finally{ $("aprog").style.display="none"; validateParams(); }
 }
 
-//  Cluster review
-// Every picture here is an <img> pointing at our own API, which is same-origin
-// under nginx. The panel this replaced pulled its plots from the FileBrowser
-// raw-download URL instead, which is why "k-selection plot couldn't be loaded"
-// kept appearing: that is a different origin, and it is not there at all when
-// FileBrowser is switched off. Crowns were skipped entirely back then, with a
-// note telling the user to go and open the folder themselves.
-//
-// REVIEW remembers which run is on screen so the k buttons keep asking about
-// the same run, rather than drifting to the newest one mid-comparison.
+// Cluster review. REVIEW remembers which run is on screen.
 const REVIEW = { run:null, recommended:null, files_url:null, ortho:null };
 
-// Fetch and draw one run's review. Used when opening an older run; the analyze
-// path already holds the payload and calls renderClusterReview directly.
+// Fetch and draw one run's review.
 async function loadClusterReview(run){
   const box = $("clusterReview"); if(!box) return;
   box.innerHTML = '<p class="muted">loading the review…</p>';
@@ -3848,8 +3489,7 @@ function renderClusterReview(c){
   REVIEW.run = c.run || CURRENT_RUN || 1;
   REVIEW.recommended = c.recommended_k || null;
   REVIEW.files_url = c.files_url || null;
-  // The run's own ortho when the payload names one (an older run does), else
-  // the one selected in step 2, which is what the newest run just used.
+  // The run's own ortho, else the one selected in step 2.
   const oid = c.ortho_id || SELECTED_ORTHO;
   const orthoName = (ORTHOS.find(o => o.id === oid) || {}).filename || "";
 
@@ -3882,9 +3522,7 @@ function renderClusterReview(c){
   if(start) showKView(start);
 }
 
-// One k: its t-SNE plot, then a row per cluster with the crowns nearest that
-// cluster's centre, the ones that actually say what the group is. The old
-// panel showed no crowns at all.
+// One k: its t-SNE plot, then per cluster the crowns nearest its centre.
 async function showKView(k){
   const view = $("kView"); if(!view) return;
   const run = REVIEW.run;
@@ -3928,8 +3566,7 @@ async function showKView(k){
       }
       html += '</div>';
     }
-    // Ordered by distance to the cluster centre when the run recorded it. A run
-    // from before that say so rather than implying these five mean something.
+    // Ordered by distance to the cluster centre when recorded.
     if(d.order === "filename"){
       html += '<p class="hint">This run predates typical-crown ordering, so these '
             + 'are the first crowns by filename &mdash; that is detection order, '
@@ -3944,8 +3581,7 @@ async function showKView(k){
   }
 }
 
-// Carry the chosen k into step 4 and go there, so the user is not left to copy
-// the number by hand.
+// Carry the chosen k into step 4.
 function useK(k){
   const ck = $("ck"); if(!ck) return;
   ck.value = k;
@@ -3978,9 +3614,7 @@ function openCrown(img){
 }
 function closeCrown(){ const lb = $("crownLb"); if(lb) lb.hidden = true; }
 
-// Reactive: called on every #ck / #species input. Renders one row per cluster,
-// preserving any species already picked. Clears silently when k is invalid
-// (no alert, this is input-driven, not a button press).
+// Renders one row per cluster on input, keeping species already picked.
 function buildClusterRows(){
   const box=$("clusterRows");
   const k=parseInt($("ck").value,10);
@@ -4007,8 +3641,7 @@ async function submitLabels(){
   for(let i=0;i<k;i++){ const sel=$("cl_"+i); csv+=`${i},${sel?sel.value:""},\n`; }
   try{
     const fd=new FormData(); fd.append("chosen_k",String(k)); fd.append("file",new Blob([csv],{type:"text/csv"}),"labels.csv");
-    // Name the run in the path. Same handler either way, but leaving it out
-    // means "the newest", and the whole point here is that it might not be.
+    // Name the run in the path, since it may not be the newest.
     const r=await api(withPid("/api/v1/project/runs/"+targetRun()+"/labels"),
                       {method:"POST",body:fd});
     $("linfo").innerHTML='<span class="ok">labels saved</span> &middot; '+r.state; log("labels submitted");
@@ -4022,9 +3655,7 @@ async function finalize(){
   $("btnFinal").disabled=true; $("fprog").style.display="block"; $("results").textContent="";
   try{
     $("fstage").textContent="triggering finalize…";
-    // Always name the run. /runs/{n}/finalize dispatches to Airflow's
-    // drone_finalize DAG when Airflow is configured, and to a local thread
-    // when it is not; either way the run is followed through its own row.
+    // Always name the run.
     const runNo = targetRun();
     const triggered = await api(withPid("/api/v1/project/runs/"+runNo+"/finalize"),
                                 {method:"POST",headers:{"Content-Type":"application/json"},
@@ -4032,9 +3663,7 @@ async function finalize(){
     rememberProject(triggered);
     $("fstage").textContent="export started…";
     await pollRunState(runNo,["COMPLETED"],["FAILED"],$("fstage"));
-    // The run's own results (downloads and counts for THAT run), plus the
-    // project-level bits the panel below needs: the consent answer, and the
-    // run's folder link.
+    // The run's results, plus the consent answer and folder link.
     const rr=await api(withPid("/api/v1/project/runs/"+runNo+"/results"));
     const pr=rememberProject(await api(withPid("/api/v1/project")));
     let runFiles=null;
@@ -4066,11 +3695,7 @@ async function finalize(){
   finally{ $("btnFinal").disabled=false; $("fprog").style.display="none"; }
 }
 
-//  Re-run / New analysis
-// Re-run: same project + data, open a fresh run. Clear the old run name and
-// send the user back to configure & Run analysis (which archives the current
-// run and opens run N+1). New analysis: start over on a new project, behaves
-// like a page refresh.
+// Re-run opens a fresh run on the same project; New analysis starts a new project.
 function rerunFlow(){
   $("runname").value = "";
   $("ainfo").innerHTML = ""; $("linfo").innerHTML = ""; $("results").innerHTML = "";
@@ -4088,8 +3713,7 @@ const CONSENT_LABELS = {
   1: "Yes, all data — all data (including labelled crowns) public for training and viewing.",
   2: "Yes, unlabelled only — only the Step-1 unlabelled crown data public.",
 };
-// Rendered only when consent has NOT yet been given (savedAt falsy). Once saved,
-// the box is removed from the UI entirely (see submitConsent + finalize guard).
+// Rendered only until consent is given.
 function consentBoxHtml(current){
   const row=(v,txt)=>`
     <label style="display:flex;gap:9px;align-items:flex-start;font-weight:400;margin:6px 0">
@@ -4127,9 +3751,8 @@ async function submitConsent(){
   }catch(e){ const m=$("consentMsg"); if(m) m.innerHTML='<span class="err">'+e.message+'</span>'; }
 }
 
-//  Landing: list the user's past runs + their public FileBrowser links
-// Relative day label, falling back to an absolute date past a week. The API
-// returns updated_at as an ISO string (see /projects/mine).
+// Landing: the user's past runs and their FileBrowser links.
+// Relative day label, absolute date past a week.
 function runDate(iso){
   if(!iso) return {short:"", full:""};
   const d = new Date(iso);
@@ -4149,8 +3772,7 @@ async function loadMyProjects(){
     const list=(res&&res.projects)||[];
     if(!list.length) return;
 
-    // Collapsed by default: this list grows without bound and was pushing the
-    // actual workflow off the screen. <details> keeps it one click away.
+    // Collapsed by default.
     let rows="";
     for(const p of list){
       const nm  = esc(p.name || p.project_id.slice(0,8));
@@ -4188,8 +3810,7 @@ async function loadMyProjects(){
         +   '<ul class="run-list">'+rows+'</ul>'
         + '</details>';
       box.style.display="block";
-      // Delegated: the list is re-rendered on every reopen, so a listener bound
-      // to the buttons themselves would have to be rebound each time.
+      // Delegated, since the list is re-rendered.
       const det = box.querySelector("details.runs");
       if(det) det.addEventListener("toggle", () => { PROJECT_PANEL_OPEN = det.open; });
       box.onclick = (ev) => {
@@ -4202,36 +3823,19 @@ async function loadMyProjects(){
   }catch(e){ /* best-effort; no past-runs panel if unauthenticated / none */ }
 }
 
-// Two jobs. Once the user has touched the disclosure, their choice is kept
-// across the re-render that follows opening a project, otherwise the panel
-// would collapse under them the moment they click a name. Until then, `null`
-// means "not decided", and the default depends on what the page can offer: with
-// no project open, this list is the only way to get back to earlier work, so it
-// starts open. With one open, the workflow below is what matters and the list
-// stays out of the way, the reason it was collapsed in the first place.
+// Keep the user's open/closed choice; otherwise open only when no project is open.
 let PROJECT_PANEL_OPEN = null;
 function panelShouldOpen(){
   return PROJECT_PANEL_OPEN === null ? !PID : PROJECT_PANEL_OPEN;
 }
 
-//  reopening an earlier project
-// The one path back into a survey that was left part-way. Everything the run
-// needs already exists server-side: the ortho library, the run counter, the
-// pinned ortho of the last run. This only points the page at it.
-//
-// `refreshProject` deliberately refuses to guess which project that is
-// (`if(!PID) return null`) because auto-adopting the server's "latest" once
-// reused the previous ortho and fired a run 2 instead of starting clean. This
-// is the opposite of a guess: the user names the project, so setting PID first
-// and then refreshing is exactly what that guard was protecting.
+// Reopening an earlier project: the user names it, so set PID then refresh.
 async function openProject(pid){
   if(!pid) return;
   const prev = PID;
   const info = $("pinfo");
 
-  // Nothing from the previous project may survive into this one. ORTHOS and the
-  // selection are per project; the results panes below belong to a specific run
-  // and would otherwise sit there looking like this project's output.
+  // Clear everything from the previous project.
   PID = pid;
   SELECTED_ORTHO = null; ORTHOS = []; ORTHO_USAGE = null; CURRENT_RUN = 1;
   // A run number means nothing outside its project.
@@ -4249,8 +3853,7 @@ async function openProject(pid){
 
   const p = await refreshProject();          // fetches, then cascades into refreshOrthos
   if(!p){
-    // 403/404/offline. Put the page back where it was rather than leaving it
-    // pointed at a project it cannot read.
+    // On failure, put the page back where it was.
     PID = prev;
     if(info) info.innerHTML =
       '<span class="err">Could not open that project.</span> '
@@ -4281,12 +3884,7 @@ async function openProject(pid){
   log("opened project "+PID);
 }
 
-//  surviving a reload
-// sessionStorage, NOT localStorage, and the difference is the whole point. This
-// remembers the project for THIS TAB only: a reload, or a token refresh, keeps
-// the user where they were. A new tab or a new day starts with nothing open, so
-// the page can never silently adopt a project the user has not just chosen ,
-// which is the failure the `if(!PID) return null` guard exists to prevent.
+// Surviving a reload: sessionStorage, so the project is remembered for this tab only.
 const OPEN_PID_KEY = "tcp.openProject";
 async function restoreOpenProject(){
   if(PID) return;                            // a project was created this session
@@ -4320,12 +3918,7 @@ function showOpenRunReview(p){
 }
 
 
-//  Boot
-// If a real Google client id is configured, keep the sign-in gate up and wait
-// for the user to authenticate (onSignedIn boots the app), or let them
-// bypass it via guestLogin(). If auth is not configured (local dev /
-// unconfigured deploy), bypass the gate so the pipeline stays usable,
-// matching backend auth_enabled=False.
+// Boot. Show the sign-in gate when auth is configured, otherwise skip it.
 window.addEventListener("load", ()=>{
   // Independent of auth: field hints and the guide route are static content.
   renderHints();
@@ -4338,14 +3931,13 @@ window.addEventListener("load", ()=>{
   });
   validateParams();
 
-  // The guide's standalone calculator. Separate inputs from the form on
-  // purpose, so reading the guide can never disturb a configured run.
+  // The guide's standalone calculator.
   ["gz_tile","gz_buf","gz_size"].forEach(id => {
     const el = $(id); if(el) el.addEventListener("input", updateGuideZoom);
   });
 
   if(AUTH_CONFIGURED){
-    initGis();                         // gate stays visible until sign-in / guest
+    initGis();                         // gate stays visible until sign-in
   } else {
     const gate = $("auth-gate"); if(gate) gate.classList.add("hidden");
     populateModels();
@@ -4355,14 +3947,7 @@ window.addEventListener("load", ()=>{
 </script>
 
 <script>
-/*  Pipeline Walkthrough (hash route #/walkthrough)
-   Self-contained add-on. Touches nothing outside #wt-page except:
-     - window.wtInit, called once by route()
-     - one click listener for a[href^="#/walkthrough#"] (same-hash re-scroll,
-       mirroring the existing handler for the guide)
-   Everything else is scoped to elements whose id starts with wt-. No globals
-   beyond window.wtInit. Delete this block, the #wt-page markup, the wt CSS
-   block and the four marked lines in route() to remove the feature. */
+/* Pipeline Walkthrough (#/walkthrough). Self-contained; exposes only window.wtInit. */
 (function(){
   "use strict";
   var $$ = function(id){ return document.getElementById(id); };
@@ -4371,10 +3956,7 @@ window.addEventListener("load", ()=>{
   };
 
   /*  collapsible stages  */
-  // Set by wireTour so a collapse/expand can ask the tour to re-resolve which
-  // step the reader is actually on. Collapsing a stage moves everything below
-  // it, and without this the step counter keeps whatever the scroll jump left
-  // behind.
+  // Set by wireTour so collapse/expand can re-resolve the current step.
   var tourResync = null;
 
   function wireStages(){
@@ -4415,9 +3997,7 @@ window.addEventListener("load", ()=>{
   }
 
 
-  /*  step tour: the video player + the nine screengrabs
-     Owns #wt-tour (video) and #wt-steps (steps) plus the #wts-lb lightbox.
-     Nothing here touches the app, the guide or the rest of the walkthrough. */
+  /* Step tour: the video player and the nine screengrabs. */
   function wireTour(){
     var sec = $$("wt-steps");
     if(!sec) return;
@@ -4429,12 +4009,7 @@ window.addEventListener("load", ()=>{
     var dots  = Array.prototype.slice.call(sec.querySelectorAll(".wts-dot"));
     var smooth = function(){ return reduce() ? "auto" : "smooth"; };
 
-    /*  is the mp4 actually there?
-       It ships beside the page rather than inside it, so it can legitimately
-       be missing — someone mails the standalone html on its own. A missing
-       file makes <source> fire error and leaves the element parked at
-       NETWORK_NO_SOURCE (3); either signal swaps the player for a note and
-       hides the timestamp buttons, which would have nothing to seek. */
+    /* The mp4 ships beside the page and may be missing; then show a note instead. */
     var dead = false;
     function videoGone(){
       if(dead) return;
@@ -4456,8 +4031,7 @@ window.addEventListener("load", ()=>{
       sec.classList.add("wtv-dead");
     }
 
-    /* jump the player to a step's moment. Never autoplays: every call is a
-       click on that step's timestamp button, i.e. a user gesture. */
+    /* Jump the player to a step's moment. Never autoplays. */
     function seek(t){
       if(!video || dead) return;
       var set = function(){ try{ video.currentTime = t; }catch(e){} };
@@ -4509,23 +4083,7 @@ window.addEventListener("load", ()=>{
       b.addEventListener("click", function(){ seek(parseFloat(b.getAttribute("data-t"))); });
     });
 
-    /*  keeping "Step n of 9" honest
-       This used to pick the step with the highest intersection ratio and,
-       when NOTHING was on screen, silently keep the last one:
-
-           if(best >= 0) mark(best);        // no else — cur goes stale
-
-       Collapsing and reopening a stage moves the page by thousands of
-       pixels. Step 9 sweeps through the viewport on the way past, gets
-       marked, and then no step is visible at all — so the readout stayed on
-       "Step 9 of 9" with **Next disabled**, while the reader was looking at
-       step 1. Pressing Next did nothing, which reads as a broken button.
-
-       Position is now resolved by geometry instead: whichever step is
-       nearest a reading line a third of the way down the viewport. That
-       always has an answer, so there is no stale case to fall back to. Above
-       the tour it settles on step 1, below it on step 9, which is what the
-       controls should offer in both places. */
+    /* Current step = the one nearest a line a third of the way down the viewport. */
     var READ_LINE = 0.34;                     // fraction down the viewport
 
     function panelOpen(){ return !sec.classList.contains("wt-closed"); }
@@ -4555,19 +4113,10 @@ window.addEventListener("load", ()=>{
         if(i >= 0) mark(i);
       });
     }
-    // Exposed so collapsing or reopening a stage can re-resolve the position
-    // once the layout has settled, rather than leaving whatever the scroll
-    // jump happened to land on.
+    // Exposed so collapse/expand can re-resolve the position.
     tourResync = syncPos;
 
-    /* A plain scroll listener rather than the IntersectionObserver this used
-       to hang off. The observer only fires when a step *crosses* the
-       viewport, and there is a case where none ever does: jump from the
-       bottom of the page to the top and every step is outside the viewport
-       both before and after, so nothing changed and no callback ran. The
-       counter stayed on step 9 at the top of the page. Scroll always fires,
-       and syncPos is already throttled to one frame, so this is both cheaper
-       and correct. */
+    /* Scroll listener; an IntersectionObserver misses jumps where no step crosses the viewport. */
     window.addEventListener("scroll", syncPos, {passive:true});
     window.addEventListener("resize", syncPos);
     mark(0);
