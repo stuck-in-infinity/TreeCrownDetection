@@ -2672,6 +2672,11 @@ function withPid(path){
 function assetUrl(u){
   if(!u) return u;
   let out = String(u);
+  // The server builds absolute URLs from the address it sees, which behind a
+  // path-prefix proxy lacks the prefix (and often the https). Re-root them on
+  // the base this page reaches the API at.
+  const at = out.indexOf("/api/v1/");
+  if(at >= 0) out = apiBase() + out.slice(at);
   const add = (key, val) => {
     if(!val || new RegExp("[?&]" + key + "=").test(out)) return;
     out += (out.indexOf("?") >= 0 ? "&" : "?")
