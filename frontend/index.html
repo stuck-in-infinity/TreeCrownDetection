@@ -394,6 +394,12 @@
     /* display above overrides [hidden], so restore it. */
     .thumb-bad[hidden]{display:none}
     .use-k{margin-top:12px}
+    /* The whole site: detected crowns, and the species map once finalized. */
+    .site-map{margin:8px 0 14px}
+    .site-map-h{font-weight:600}
+    .site-map-sub{color:var(--muted);font-size:var(--t-sm);margin-bottom:4px}
+    img.site-img{max-height:560px;cursor:zoom-in}
+    img.site-img:hover{border-color:var(--muted)}
 
     /* Full-size crown, opened from a thumbnail. */
     #crownLb{position:fixed;inset:0;z-index:60;background:rgba(20,18,14,.82);
@@ -403,6 +409,7 @@
     #crownLb img{max-width:min(92vw,720px);max-height:78vh;
       border-radius:var(--r);background:#fff}
     #crownLbCap{color:#fff;font-size:var(--t-sm)}
+    #crownLb.is-map img{max-width:96vw;max-height:86vh}
 
     /* Failure details: the hint, with the technical detail folded away. */
     .fail-hint{margin-top:7px;padding:8px 11px;border-radius:var(--r-sm);
@@ -2989,7 +2996,7 @@ function renderOrthoRuns(orthoId){
     const open = r.run === targetRun();
     const words = RUN_WORDS[r.state] || esc(r.state || "");
     // can_label / can_finalize come from the server.
-    const usable = r.can_label || r.can_finalize || r.has_results;
+    const usable = r.can_label || r.can_finalize || r.has_results || !!r.overlay_url;
     // Which older run the settings came from.
     const lineage = (r.params || {}).based_on_run;
     out += '<li class="orun' + (open ? " is-open" : "") + '">'
@@ -3077,7 +3084,9 @@ async function openRun(n, opts){
 
   renderRunBanner();
   renderLabelPicker();                 // move the tick to the run now open
-  loadClusterReview(n);                // this run's clusters, not the newest
+  if(entry && !REVIEW_STATES.includes(entry.state)) renderRunOverlayOnly(entry);
+  else loadClusterReview(n);           // this run's clusters, not the newest
+  showRunResults(n, entry);            // and its species map, if it was finalized
 
   if(!(opts && opts.scroll === false)){
     const step = $("orthoLib") || $("ainfo");
@@ -3498,8 +3507,12 @@ function renderClusterReview(c){
   const oid = c.ortho_id || SELECTED_ORTHO;
   const orthoName = (ORTHOS.find(o => o.id === oid) || {}).filename || "";
 
+  // detection_overlay_url is null when the run wrote no overlay.
+  const overlay = c.detection_overlay_url ? overlayMap(REVIEW.run) : "";
+
   if(!avail.length){
-    box.innerHTML = '<p class="hint">This run produced no clusters to review.</p>';
+    box.innerHTML = (overlay ? '<div class="review">' + overlay + '</div>' : '')
+      + '<p class="hint">This run produced no clusters to review.</p>';
     return;
   }
 
@@ -3512,6 +3525,7 @@ function renderClusterReview(c){
   let html = '<div class="review">'
     + '<div class="review-head"><div class="review-title">' + title + '</div>'
     + fbLink + '</div>'
+    + overlay
     + reviewImg(assetUrl(c.k_selection_plot_url), "k-selection plot for run " + REVIEW.run, "plot")
     + '<div class="review-krow"><span class="muted">Compare a k:</span>';
   for(const k of avail){
@@ -3595,6 +3609,43 @@ function useK(k){
   if(rows && rows.scrollIntoView) rows.scrollIntoView({behavior:"smooth", block:"center"});
 }
 
+// A picture of the whole site. The page shows the light copy; a click opens
+// the full one. `url` is an API path or absolute API URL.
+function siteMap(url, title, sub){
+  if(!url) return "";
+  const full = assetUrl(url);
+  const small = full + (full.indexOf("?") >= 0 ? "&" : "?") + "preview=1";
+  return '<div class="site-map"><div class="site-map-h">' + esc(title) + '</div>'
+    + (sub ? '<div class="site-map-sub">' + esc(sub) + '</div>' : '')
+    + '<span class="plot-wrap"><img class="plot site-img" loading="lazy"'
+    + ' src="' + escAttr(small) + '" data-full="' + escAttr(full) + '"'
+    + ' alt="' + escAttr(title) + '" title="' + escAttr(title) + '"'
+    + ' onclick="openCrown(this)" onerror="thumbFailed(this)">'
+    + '<span class="thumb-bad" hidden>' + esc(title) + ' &mdash; not available</span>'
+    + '</span></div>';
+}
+
+function overlayMap(run){
+  return siteMap("/api/v1/project/detection/overlay.png?run=" + encodeURIComponent(run),
+                 "Detected crowns",
+                 "Every crown found on this orthomosaic, before any species is named. Click to enlarge.");
+}
+
+// A run with no clusters to review (it failed, or is still analysing) can
+// still have its detection overlay, which says which site it was.
+function renderRunOverlayOnly(entry){
+  const box = $("clusterReview"); if(!box || !entry) return;
+  const words = RUN_WORDS[entry.state] || entry.state || "";
+  box.innerHTML = '<div class="review"><div class="review-head">'
+    + '<div class="review-title">Run ' + entry.run
+    + (entry.ortho ? " on " + esc(entry.ortho) : "")
+    + ' <span class="muted">&middot; ' + esc(words) + '</span></div></div>'
+    + (entry.overlay_url
+        ? overlayMap(entry.run)
+        : '<p class="hint">This run has no pictures to show.</p>')
+    + '</div>';
+}
+
 // An <img> that leaves a labelled gap instead of a broken-image icon.
 function reviewImg(src, alt, cls){
   if(!src) return "";
@@ -3612,7 +3663,10 @@ function thumbFailed(img){
 // Crowns are small; full size is still worth a look when deciding a species.
 function openCrown(img){
   const lb = $("crownLb"); if(!lb) return;
-  $("crownLbImg").src = img.src;
+  // A site map shows its light copy in the page and the full one here.
+  const full = img.getAttribute("data-full");
+  lb.classList.toggle("is-map", !!full);
+  $("crownLbImg").src = full || img.src;
   $("crownLbImg").alt = img.alt;
   $("crownLbCap").textContent = img.title || "";
   lb.hidden = false;
@@ -3682,11 +3736,7 @@ async function finalize(){
     const d=r.downloads||{};
     let html='<span class="ok">completed.</span>';
     if(r.files_url) html+=` &middot; <a href="${r.files_url}" target="_blank"><b>Browse all output files →</b></a>`;
-    html+='<div style="margin-top:6px">downloads:</div><ul style="margin:4px 0">';
-    for(const [k,v] of Object.entries(d)) if(v) html+=`<li><a href="${escAttr(assetUrl(apiBase()+v))}" target="_blank">${k}</a></li>`;
-    html+='</ul>';
-    const dist=r.species_distribution||{};
-    if(Object.keys(dist).length) html+='<div>distribution: '+Object.entries(dist).map(([s,n])=>`${s}=${n}`).join(", ")+'</div>';
+    html+=runResultsBody(r);
     // Consent box: only when finalize actually produced results (COMPLETED + a KMZ).
     html+='<div style="margin-top:12px">'+
       '<button class="ghost" onclick="rerunFlow()">Re-run · new run, same data</button>'+
@@ -3698,6 +3748,33 @@ async function finalize(){
     $("results").innerHTML=html; log("finalize done"); refreshProject();
   }catch(e){ $("results").innerHTML='<span class="err">'+e.message+'</span>'; log("finalize failed: "+e.message); }
   finally{ $("btnFinal").disabled=false; $("fprog").style.display="none"; }
+}
+
+// What a finalized run produced: the species map, the downloads, the counts.
+function runResultsBody(r){
+  const d=r.downloads||{};
+  let html=siteMap(r.species_map_url, "Species map \u2014 run "+r.run,
+                   "The detected crowns, coloured by the species you named. Click to enlarge.");
+  html+='<div style="margin-top:6px">downloads:</div><ul style="margin:4px 0">';
+  for(const [k,v] of Object.entries(d)) if(v) html+=`<li><a href="${escAttr(assetUrl(apiBase()+v))}" target="_blank">${k}</a></li>`;
+  html+='</ul>';
+  const dist=r.species_distribution||{};
+  if(Object.keys(dist).length) html+='<div>distribution: '+Object.entries(dist).map(([s,n])=>`${esc(s)}=${n}`).join(", ")+'</div>';
+  return html;
+}
+
+// The final output of a run opened from the list, or of a project reopened
+// after it was finalized. `entry` is the run's row when the caller has it.
+async function showRunResults(n, entry){
+  const box=$("results"); if(!box) return;
+  // An unanswered consent question stays where it is; it names its own run.
+  if($("consentBox")) return;
+  if(entry && !entry.has_results){ box.innerHTML=""; return; }
+  try{
+    const r=await api(withPid("/api/v1/project/runs/"+encodeURIComponent(n)+"/results"));
+    if(targetRun()!==n) return;          // another run was opened meanwhile
+    box.innerHTML='<b>Run '+n+' &mdash; final output</b>'+runResultsBody(r);
+  }catch(e){ box.innerHTML=""; }
 }
 
 // Re-run opens a fresh run on the same project; New analysis starts a new project.
@@ -3919,7 +3996,14 @@ function showOpenRunReview(p){
     openRun(ACTIVE_RUN, {scroll:false});
     return;
   }
-  if(p && REVIEW_STATES.includes(p.state)) loadClusterReview(CURRENT_RUN || 1);
+  const n = CURRENT_RUN || 1;
+  if(p && REVIEW_STATES.includes(p.state)){
+    loadClusterReview(n);
+    if(p.state === "COMPLETED") showRunResults(n);
+    return;
+  }
+  // No clusters yet, or the run failed: its detection overlay may still exist.
+  runEntry(n).then(e => { if(e && e.overlay_url && targetRun() === n) renderRunOverlayOnly(e); });
 }
 
 

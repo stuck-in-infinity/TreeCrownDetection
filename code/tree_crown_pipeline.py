@@ -35,6 +35,7 @@ import timm
 import simplekml
 
 import crown_thumbs
+import map_images
 import matplotlib
 matplotlib.use('Agg')          # no display and no GUI loop; jobs run off-thread
 import matplotlib.pyplot as plt
@@ -788,6 +789,41 @@ def step3_validate(config):
 
 # Step 4: export the species map as a KMZ for Google Earth.
 
+def load_species_polygons(poly_folder, master_path):
+    """Every crown polygon of a run with its species attached.
+
+    Shared by the KMZ export and the species-map picture, which the API also
+    draws on demand for runs finalized before the picture existed.
+    """
+    # Read the master table written by Step 2.
+    master_df = pd.read_csv(master_path)
+
+    # Read the crown polygons.
+    all_polys = []
+    for gj_file in sorted(os.listdir(poly_folder)):
+        if not gj_file.endswith('.geojson'):
+            continue
+
+        prefix = os.path.splitext(gj_file)[0]
+        g = gpd.read_file(os.path.join(poly_folder, gj_file))
+        g['_cid'] = crown_id_from_gdf(g)
+        g['image_name'] = g['_cid'].apply(lambda x: f'{prefix}_{int(x):03d}.tif')
+
+        if 'Confidence_score' in g.columns:
+            g = g.rename(columns={'Confidence_score': 'confidence_score'})
+
+        all_polys.append(g)
+
+    gdf_all = pd.concat(all_polys, ignore_index=True)
+
+    # Attach each polygon's species.
+    gdf_all = gdf_all.merge(
+        master_df[['image_name', 'species', 'polygon_id']],
+        on='image_name', how='left'
+    )
+    gdf_all['species'] = gdf_all['species'].fillna('unlabelled')
+    return gdf_all
+
 def step4_export_kmz(config):
     """Write the species map as a KMZ that Google Earth can open."""
     print('\n' + '='*70)
@@ -799,35 +835,16 @@ def step4_export_kmz(config):
 
     make_dirs(config.STEP4_OUTPUT)
 
-    # Read the master table written by Step 2.
     master_path = os.path.join(config.STEP2_OUTPUT, 'crown_master.csv')
-    master_df = pd.read_csv(master_path)
-    
-    # Read the crown polygons.
-    all_polys = []
-    for gj_file in sorted(os.listdir(config.POLY_FOLDER)):
-        if not gj_file.endswith('.geojson'):
-            continue
-        
-        prefix = os.path.splitext(gj_file)[0]
-        g = gpd.read_file(os.path.join(config.POLY_FOLDER, gj_file))
-        g['_cid'] = crown_id_from_gdf(g)
-        g['image_name'] = g['_cid'].apply(lambda x: f'{prefix}_{int(x):03d}.tif')
-        
-        if 'Confidence_score' in g.columns:
-            g = g.rename(columns={'Confidence_score': 'confidence_score'})
-        
-        all_polys.append(g)
-    
-    gdf_all = pd.concat(all_polys, ignore_index=True)
-    
-    # Attach each polygon's species.
-    gdf_all = gdf_all.merge(
-        master_df[['image_name', 'species', 'polygon_id']],
-        on='image_name', how='left'
-    )
-    gdf_all['species'] = gdf_all['species'].fillna('unlabelled')
-    
+    gdf_all = load_species_polygons(config.POLY_FOLDER, master_path)
+
+    # A picture of the same map for the browser, which cannot open a KMZ. Drawn
+    # before the reprojection below: the raster is in the polygons' own CRS.
+    map_images.render_species_map(
+        gdf_all, map_images.find_base_raster(config.WORKDIR),
+        os.path.join(config.STEP4_OUTPUT, 'species_map.png'), config.COLOR_PALETTE,
+        overwrite=True)
+
     # KML needs latitude and longitude, so reproject to WGS84.
     if gdf_all.crs is None:
         gdf_all = gdf_all.set_crs(epsg=config.SOURCE_EPSG)

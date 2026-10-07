@@ -58,6 +58,25 @@ def project_paths(project_id: str, run: int = 1) -> dict:
     }
 
 
+def detection_overlay_path(project_id: str, run: int = 1) -> str | None:
+    """The run's detection overlay (crowns outlined on the orthomosaic), or
+    None if detection never got far enough to draw one.
+
+    Detection writes into ``detectree/<ortho stem>/``, so the folder name is not
+    fixed; a run is pinned to one orthomosaic, so the first by name is the one.
+    """
+    det = project_paths(project_id, run)["detectree"]
+    try:
+        subs = sorted(d for d in os.listdir(det) if os.path.isdir(os.path.join(det, d)))
+    except OSError:
+        return None
+    for d in subs:
+        f = os.path.join(det, d, "overlay.png")
+        if os.path.exists(f):
+            return f
+    return None
+
+
 def first_polygon_geojson(project_id: str, run: int = 1) -> str | None:
     """The run's crown-polygon GeoJSON, or None if the run wrote none.
 

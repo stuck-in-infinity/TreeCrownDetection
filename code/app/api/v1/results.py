@@ -10,10 +10,16 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_project
 from app.core.logging import ERROR_CODES, get_logger, naive_now
-from app.core.storage import first_polygon_geojson, project_paths
+from app.core.storage import (
+    detection_overlay_path,
+    first_polygon_geojson,
+    project_paths,
+)
 from app.db import models
 from app.db.session import get_db
 from app.services.assets import analyze_asset_fields
+
+import map_images
 
 router = APIRouter()
 log = get_logger("app.api")
@@ -200,6 +206,7 @@ def download_stac_item(project=Depends(get_project)):
 _ASSETS = {
     "kmz": ("step4_output", "species_map.kmz",
             "application/vnd.google-earth.kmz", "species_map.kmz"),
+    "species-map.png": ("step4_output", "species_map.png", "image/png", None),
     "crown-master.csv": ("step2_output", "crown_master.csv", "text/csv", "crown_master.csv"),
     "polygon-species.csv": ("step2_output", "polygon_species.csv", "text/csv", "polygon_species.csv"),
     "confusion-matrix.png": ("step3_output", "confusion_matrix.png", "image/png", None),
@@ -222,6 +229,54 @@ def _asset_path(project_id: str, run: int, asset: str):
         return (found or os.path.join(p[dir_key], "tree_crowns.geojson"),
                 media, download_name)
     return os.path.join(p[dir_key], fname), media, download_name
+
+def _species_map_path(project_id: str, run: int) -> str:
+    return os.path.join(project_paths(project_id, run)["step4_output"], "species_map.png")
+
+def _can_show_species_map(project_id: str, run: int) -> bool:
+    """Whether the species map exists or can be drawn from what the run kept."""
+    if os.path.exists(_species_map_path(project_id, run)):
+        return True
+    p = project_paths(project_id, run)
+    return (os.path.exists(os.path.join(p["step2_output"], "crown_master.csv"))
+            and first_polygon_geojson(project_id, run) is not None
+            and map_images.find_base_raster(p["work"]) is not None)
+
+def _ensure_species_map(project_id: str, run: int) -> str | None:
+    """The run's species map, drawing it now if the run predates the picture.
+
+    Finalize draws it for every new run. A run finalized before that has the
+    same inputs still on disk, so the first person to look at it pays a few
+    seconds once and the file is there for everyone after.
+    """
+    out = _species_map_path(project_id, run)
+    if os.path.exists(out):
+        return out
+    if not _can_show_species_map(project_id, run):
+        return None
+    p = project_paths(project_id, run)
+    try:
+        import tree_crown_pipeline as tcp
+        from app.services.pipeline_adapter import COLOR_PALETTE
+
+        gdf = tcp.load_species_polygons(
+            p["polygons"], os.path.join(p["step2_output"], "crown_master.csv"))
+        if map_images.render_species_map(
+                gdf, map_images.find_base_raster(p["work"]), out, COLOR_PALETTE):
+            return out
+    except Exception:
+        log.warning("species map not drawn project=%s run=%s", project_id, run,
+                    exc_info=True)
+    return None
+
+def _run_images(project_id: str, run: int) -> dict:
+    """The two pictures of a run, as URLs, or None where there is none."""
+    return {
+        "overlay_url": (f"/api/v1/project/detection/overlay.png?run={run}"
+                        if detection_overlay_path(project_id, run) else None),
+        "species_map_url": (f"/api/v1/project/runs/{run}/results/species-map.png"
+                            if _can_show_species_map(project_id, run) else None),
+    }
 
 def _run_results_payload(project, run: int) -> dict:
     """Results summary for a specific (possibly archived) run, with run-scoped
@@ -257,6 +312,7 @@ def _run_results_payload(project, run: int) -> dict:
         "validation": _read_validation(p),
         "downloads": downloads,
     }
+    payload.update(_run_images(project.id, run))
     payload.update(analyze_asset_fields(project, run))
     return payload
 
@@ -364,6 +420,7 @@ def _decorate(db, project, entries: list[dict]) -> list[dict]:
             f"/api/v1/project/runs/{run}/results" if e["has_results"] else None
         )
         e["files_url"] = run_share_url(project.share_hash, run) if fb_on else None
+        e.update(_run_images(project.id, run))
 
         # The run row is authoritative for state and attribution; the JSON
         # history is a compatibility view that predates it.
@@ -444,17 +501,25 @@ def run_results(run: int, project=Depends(get_project)):
 
 @router.get("/projects/{project_id}/runs/{run}/results/{asset}")
 @router.get("/project/runs/{run}/results/{asset}")
-def run_asset(run: int, asset: str, project=Depends(get_project)):
+def run_asset(run: int, asset: str, preview: bool = False,
+              project=Depends(get_project)):
     if run < 1 or run > (project.current_run or 1):
         raise HTTPException(404, {"code": "NOT_FOUND",
             "message": f"Run {run} does not exist", "project_id": project.id,
             "hint": "check the run history for this project and use a run number it lists"})
     path, media, download_name = _asset_path(project.id, run, asset)
+    if asset == "species-map.png":
+        _ensure_species_map(project.id, run)
     if not os.path.exists(path):
         raise HTTPException(404, {"code": "NOT_FOUND",
             "message": f"{asset} not found for run {run}", "project_id": project.id,
             "hint": "that run did not produce this file — confusion-matrix.png is optional "
                     "and needs ground truth; for the rest, use a finalized run"})
+    if preview and media == "image/png":
+        # The screen-sized copy, for showing in the page instead of saving.
+        small = os.path.splitext(path)[0] + "_preview.jpg"
+        if map_images.write_preview(path, small):
+            return FileResponse(small, media_type="image/jpeg")
     kwargs = {"media_type": media}
     if download_name:
         kwargs["filename"] = download_name

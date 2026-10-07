@@ -15,13 +15,18 @@ from fastapi.responses import FileResponse, StreamingResponse
 
 from app.api.deps import get_project
 from app.core.logging import ERROR_CODES, get_logger
-from app.core.storage import project_paths, relative_artifact_path
+from app.core.storage import (
+    detection_overlay_path,
+    project_paths,
+    relative_artifact_path,
+)
 from app.db import models
 from app.db.session import get_db
 from app.services import run_registry
 from app.services.assets import analyze_asset_fields
 
 import crown_thumbs
+import map_images
 
 router = APIRouter()
 log = get_logger("app.clustering")
@@ -112,18 +117,8 @@ def build_clustering_payload(request: Request, project, run: int | None = None,
     # For the detection overlay, return the file path relative to the storage
     # root rather than an API URL, for example
     # projects/<id>/work/run_<n>/detectree/S3C/overlay.png, or None if missing.
-    _det = project_paths(project.id, n)["detectree"]
-    _subs = (
-        sorted(d for d in os.listdir(_det) if os.path.isdir(os.path.join(_det, d)))
-        if os.path.isdir(_det)
-        else []
-    )
-    _overlay_f = os.path.join(_det, _subs[0], "overlay.png") if _subs else ""
-    overlay_rel = (
-        relative_artifact_path(_overlay_f)
-        if (_overlay_f and os.path.exists(_overlay_f))
-        else None
-    )
+    _overlay_f = detection_overlay_path(project.id, n)
+    overlay_rel = relative_artifact_path(_overlay_f) if _overlay_f else None
     per_k = [
         {
             "k": k,
@@ -319,25 +314,31 @@ def crown_png(image_name: str, run: int | None = None, k: int | None = None,
 
 @router.get("/projects/{project_id}/detection/overlay.png")
 @router.get("/project/detection/overlay.png")
-def overlay_png(run: int | None = None, project=Depends(get_project),
-                db=Depends(get_db)):
-    """The detected crowns drawn over the project's orthomosaic."""
+def overlay_png(run: int | None = None, preview: bool = False,
+                project=Depends(get_project), db=Depends(get_db)):
+    """The detected crowns drawn over the project's orthomosaic.
+
+    Not gated on the run's state: a run that failed after detection still has
+    this picture, and it is the one thing that says which site the run was.
+    ``preview`` asks for the screen-sized JPEG, written beside the original on
+    first request; the original is served if that cannot be made.
+    """
     n = _resolve_run(db, project, run)
-    det = project_paths(project.id, n)["detectree"]
-    subs = (
-        sorted(d for d in os.listdir(det) if os.path.isdir(os.path.join(det, d)))
-        if os.path.isdir(det)
-        else []
-    )
-    f = os.path.join(det, subs[0], "overlay.png") if subs else ""
-    if not f or not os.path.exists(f):
+    f = detection_overlay_path(project.id, n)
+    if not f:
         raise HTTPException(404, {"code": "NOT_FOUND",
             "message": f"Run {n} has no detection overlay.",
             "project_id": project.id,
             "hint": "the detection overlay is written during analysis — run the analysis for "
                     "this project, then reload",
             "details": {"run": n}})
-    return FileResponse(f, media_type="image/png")
+    # A run's overlay never changes once written.
+    headers = {"Cache-Control": "private, max-age=86400"}
+    if preview:
+        small = os.path.join(os.path.dirname(f), "overlay_preview.jpg")
+        if map_images.write_preview(f, small):
+            return FileResponse(small, media_type="image/jpeg", headers=headers)
+    return FileResponse(f, media_type="image/png", headers=headers)
 
 # Helpers.
 def _run_files_url(project, run: int) -> str | None:
