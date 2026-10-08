@@ -12,6 +12,7 @@ With TCP_FILEBROWSER_BASE_URL unset, this module does nothing.
 import json
 import urllib.error
 import urllib.request
+import urllib.parse
 
 from app.core.logging import ERROR_CODES, classify_conn_error, get_logger
 from app.core.settings import settings
@@ -64,12 +65,15 @@ def create_project_share(project_id: str) -> str:
         raise err from e
 
     body = json.dumps({}).encode()
+    prefix = (settings.filebrowser_projects_path or "").strip().strip("/")
+    share_path = f"{prefix}/{project_id}" if prefix else project_id
     req = urllib.request.Request(
-        f"{base}/api/share/{project_id}",
+        f"{base}/api/share/{urllib.parse.quote(share_path)}",
         data=body,
         headers={"Content-Type": "application/json", "X-Auth": token},
         method="POST",
     )
+
     try:
         with urllib.request.urlopen(req, timeout=10) as resp:
             data = json.loads(resp.read().decode())

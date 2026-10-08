@@ -178,6 +178,7 @@ class Settings(BaseSettings):
     # responses.
     filebrowser_base_url: str = ""        # internal URL the backend calls
     filebrowser_public_url: str = ""      # URL shown to the user, defaults to base_url
+    filebrowser_projects_path: str = ""
     filebrowser_username: str = "admin"
     filebrowser_password: str = ""
 
