@@ -67,6 +67,7 @@ code/scripts/make_species_check_fig.py
 code/scripts/make_summary_md.py
 code/scripts/make_tile_compare_fig.py
 code/scripts/tune_detection.py
+code/tests
 docs/FINAL_census_vs_model1.pptx
 docker-compose.gpu-cdi.yml
 airflow_stacd
