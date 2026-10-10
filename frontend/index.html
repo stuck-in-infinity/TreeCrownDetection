@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Drone Imagery Analysis</title>
+  <link rel="icon" type="image/png" href="corestack_logo.png">
   <style>
     :root{
       /* Colours. */
@@ -52,6 +53,7 @@
       text-decoration:none;color:inherit;border-radius:var(--r-sm);
       padding:3px 6px 3px 3px;margin-left:-3px}
     #appbar .brand:focus-visible{outline:2px solid var(--green);outline-offset:2px}
+    .brand-logo{flex:none;height:46px;width:auto;display:block}
     .brand-txt{display:flex;flex-direction:column;min-width:0;line-height:1.15}
     #appbar h1{margin:0;font-size:var(--t-lg);letter-spacing:.1px;white-space:nowrap}
     #appbar .tag{font-size:var(--t-xs);color:var(--muted);font-style:italic;
@@ -212,6 +214,7 @@
     /* Same mark as #appbar. */
     #auth-gate .gate-brand{display:flex;align-items:center;gap:12px}
     #auth-gate header.top .header-content{max-width:1180px;margin:0 auto;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px}
+    #auth-gate .gate-brand .brand-logo{height:60px}
     #auth-gate header.top h1{margin:0;font-size:23px;font-family:Georgia,"Iowan Old Style","Times New Roman",serif;font-weight:600}
     #auth-gate header.top p{margin:4px 0 0;color:var(--muted);font-style:italic;font-size:14px}
     #auth-gate main{flex:1;display:grid;grid-template-columns:1fr 1.1fr;gap:36px;align-items:center;padding:22px 0}
@@ -901,6 +904,7 @@
       <header class="top fade-slide del-1">
         <div class="header-content">
           <div class="gate-brand">
+            <img class="brand-logo" src="corestack_logo.png" alt="CoRE Stack logo">
             <div>
               <h1>Drone Imagery Analysis</h1>
               <p>A collaborative ecological mapping register</p>
@@ -973,6 +977,7 @@
   <header class="top" id="appbar">
     <div class="wrap">
       <a class="brand" href="#/" aria-label="Drone Imagery Analysis — home">
+        <img class="brand-logo" src="corestack_logo.png" alt="CoRE Stack logo">
         <span class="brand-txt">
           <h1>Drone Imagery Analysis</h1>
           <span class="tag">drone imagery to species map</span>

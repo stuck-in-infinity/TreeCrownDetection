@@ -19,6 +19,7 @@ frontend/config.js
 *.tif
 /scripts
 *.png
+!frontend/corestack_logo.png
 *.pgw
 bbmp_tree_census_july_2026.geojson
 _tile_cache*/
