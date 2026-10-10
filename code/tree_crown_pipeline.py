@@ -523,6 +523,17 @@ def step1_analyze_k(config, inertia_vals, silhouette_vals, db_vals, dir_cluster)
     
     print(f'  Saved: clustering/k_selection.png')
 
+def cluster_colors(k):
+    """Return ``k`` different colours, one per cluster.
+
+    Uses tab10 up to 10 clusters, tab20 up to 20, and turbo beyond that.
+    """
+    if k <= 10:
+        return [matplotlib.colormaps['tab10'](i) for i in range(k)]
+    if k <= 20:
+        return [matplotlib.colormaps['tab20'](i) for i in range(k)]
+    return [matplotlib.colormaps['turbo'](i / (k - 1)) for i in range(k)]
+
 def step1_tsne(config, X, names_df, all_cluster_labels, dir_cluster):
     """Draw a t-SNE scatter plot of the crowns for each value of k."""
     print('\n' + '='*70)
@@ -549,12 +560,14 @@ def step1_tsne(config, X, names_df, all_cluster_labels, dir_cluster):
     for k in config.K_LIST:
         tsne_df['cluster'] = all_cluster_labels[k]
         
+        # Same colour list for the points and the legend, so they always match.
+        colors = cluster_colors(k)
         fig, ax = plt.subplots(figsize=(8, 6))
         scatter = ax.scatter(tsne_df['x'], tsne_df['y'],
-                           c=tsne_df['cluster'], cmap='tab10',
+                           c=[colors[int(c)] for c in tsne_df['cluster']],
                            s=20, alpha=0.7, linewidths=0)
-        
-        handles = [mpatches.Patch(color=matplotlib.colormaps['tab10'](i/10),
+
+        handles = [mpatches.Patch(color=colors[i],
                                  label=f'Cluster {i}') for i in range(k)]
         ax.legend(handles=handles, bbox_to_anchor=(1.05, 1), loc='upper left',
                  fontsize=9, title=f'k={k}')

@@ -411,7 +411,8 @@ def job_b_finalize(self, project_id: str, job_id: str, run: int | None = None):
             try:
                 from app.services.stac import write_stac_item
 
-                write_stac_item(project, chosen_k=cfg.CHOSEN_K, run=run)
+                write_stac_item(project, chosen_k=cfg.CHOSEN_K, run=run,
+                                run_row=run_row)
             except Exception:  # pragma: no cover - best effort
                 log.warning("STAC item not written", exc_info=True)
 

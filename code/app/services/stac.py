@@ -44,6 +44,36 @@ def _run(project) -> int:
     return getattr(project, "current_run", 1) or 1
 
 
+def _run_settings(project, run: int, run_row=None) -> tuple[dict, str | None]:
+    """Return the params and detector model used by ``run``.
+
+    The project only holds the settings of the newest run, so an older run
+    reads them from its own ``Run`` row. If the row is missing or empty, the
+    project's values are used.
+    """
+    if run_row is None:
+        try:
+            from sqlalchemy.orm import object_session
+
+            from app.db import models
+
+            db = object_session(project)
+            if db is not None:
+                run_row = (
+                    db.query(models.Run)
+                    .filter_by(project_id=project.id, number=run)
+                    .one_or_none()
+                )
+        except Exception:  # noqa: BLE001 - project is not a DB row
+            run_row = None
+
+    params = dict(getattr(run_row, "params", None) or {})
+    if not params:
+        params = dict(getattr(project, "params", None) or {})
+    model_key = getattr(run_row, "model_key", None) or project.model_key
+    return params, model_key
+
+
 def _href(rel_path: str) -> str:
     """Build an asset href: relative, or absolute if public_base_url is set."""
     base = (getattr(settings, "public_base_url", "") or "").rstrip("/")
@@ -212,16 +242,19 @@ def build_stac_item(
     chosen_k: int | None = None,
     run: int | None = None,
     stage: str | None = None,
+    run_row=None,
 ) -> dict:
-    """Build the STAC Item for the project's current run.
+    """Build the STAC Item for ``run`` (default: the project's current run).
 
     ``stage``, either ``"analyze"`` or ``"finalize"``, is added to the item id so
     the two compute phases produce different ids. Leaving it as ``None`` gives
     the older ``..._run<n>`` id, for callers that do not set a stage.
+
+    ``run_row`` is the run's ``Run`` row. It is looked up if not given.
     """
     run = run or _run(project)
     paths = project_paths(project.id, run)
-    params = dict(getattr(project, "params", None) or {})
+    params, model_key = _run_settings(project, run, run_row)
 
     geojson = first_polygon_geojson(project.id, run)
     master_csv = os.path.join(paths["step2_output"], "crown_master.csv")
@@ -261,7 +294,7 @@ def build_stac_item(
         "batch_size": params.get("batch_size", 64),  # same default as PipelineParams
         "img_size": params.get("img_size", 224),
         "model_name": params.get("model_name") or default_backbone(),
-        "model_key": project.model_key,
+        "model_key": model_key,
         "source_epsg": getattr(project, "source_epsg", None) or 32643,
         "chosen_k": chosen_k or params.get("chosen_k"),
     }
@@ -287,7 +320,7 @@ def build_stac_item(
         "collection": "tree_crown_runs",
         "project_id": project.id,
         "run": run,
-        "detector_model": project.model_key,
+        "detector_model": model_key,
         "feature_extractor": params.get("model_name") or default_backbone(),
         "source_epsg": getattr(project, "source_epsg", None) or 32643,
         "chosen_k": chosen_k,
@@ -408,13 +441,17 @@ def read_stac_item(project, run: int | None = None) -> dict | None:
     return item if isinstance(item, dict) else None
 
 
-def write_stac_item(project, chosen_k: int | None = None, run: int | None = None) -> str:
+def write_stac_item(
+    project, chosen_k: int | None = None, run: int | None = None, run_row=None
+) -> str:
     """Build the STAC Item, write it into the run's step4 output, return the path.
 
     job_b_finalize is what calls this, so the item is tagged
     ``stage="finalize"``.
     """
-    item = build_stac_item(project, chosen_k=chosen_k, run=run, stage="finalize")
+    item = build_stac_item(
+        project, chosen_k=chosen_k, run=run, stage="finalize", run_row=run_row
+    )
     out = stac_item_path(project, run)
     os.makedirs(os.path.dirname(out), exist_ok=True)
     with open(out, "w") as f:
