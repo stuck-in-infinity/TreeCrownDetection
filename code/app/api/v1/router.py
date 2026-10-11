@@ -8,6 +8,7 @@ from app.api.v1 import (
     health,
     labels,
     projects,
+    public,
     results,
     runs,
 )
@@ -23,3 +24,4 @@ api_router.include_router(labels.router, tags=["labels"])
 api_router.include_router(finalize.router, tags=["finalize"])
 api_router.include_router(results.router, tags=["results"])
 api_router.include_router(compute.router, tags=["compute"])
+api_router.include_router(public.router, tags=["public"])

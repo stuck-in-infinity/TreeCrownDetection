@@ -147,6 +147,48 @@ def render_species_map(gdf, raster_path: str, dst_png: str, palette,
         return False
 
 
+def write_raster_preview(raster_path: str, dst_jpg: str, max_side: int = 1600) -> bool:
+    """Save a small JPEG of the orthomosaic. Returns True if the file exists.
+
+    Reads a shrunk copy, so large rasters are fast. Never raises.
+    """
+    try:
+        if (os.path.exists(dst_jpg)
+                and os.path.getmtime(dst_jpg) >= os.path.getmtime(raster_path)):
+            return True
+        import numpy as np
+        import rasterio
+        from PIL import Image
+
+        with rasterio.open(raster_path) as src:
+            scale = min(1.0, max_side / max(src.width, src.height))
+            h = max(1, int(src.height * scale))
+            w = max(1, int(src.width * scale))
+            n = min(3, src.count)
+            img = src.read(list(range(1, n + 1)), out_shape=(n, h, w))
+            mask = src.dataset_mask(out_shape=(h, w))
+        img = np.transpose(img, (1, 2, 0))
+        if img.dtype != np.uint8:
+            img = img.astype("float32")
+            mn, mx = float(np.nanmin(img)), float(np.nanmax(img))
+            if mx > mn:
+                img = (img - mn) / (mx - mn) * 255.0
+            img = np.nan_to_num(img).astype("uint8")
+        if img.shape[2] == 1:
+            img = np.repeat(img, 3, axis=2)
+        elif img.shape[2] == 2:
+            img = np.dstack([img[:, :, 0]] * 3)
+        # Show empty areas as white.
+        img = np.where(mask[:, :, None] > 0, img, 255).astype("uint8")
+        os.makedirs(os.path.dirname(dst_jpg), exist_ok=True)
+        tmp = _atomic_path(dst_jpg)
+        Image.fromarray(img, "RGB").save(tmp, format="JPEG", quality=85)
+        os.replace(tmp, dst_jpg)
+        return True
+    except Exception:
+        return False
+
+
 def write_preview(src_img: str, dst_jpg: str, max_side: int = 1600) -> bool:
     """Write a screen-sized JPEG of ``src_img``. True if the file is now there.
 
@@ -163,6 +205,7 @@ def write_preview(src_img: str, dst_jpg: str, max_side: int = 1600) -> bool:
         with Image.open(src_img) as im:
             im = im.convert("RGB")
             im.thumbnail((max_side, max_side))
+            os.makedirs(os.path.dirname(dst_jpg), exist_ok=True)
             tmp = _atomic_path(dst_jpg)
             im.save(tmp, format="JPEG", quality=85)
         os.replace(tmp, dst_jpg)

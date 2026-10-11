@@ -242,20 +242,10 @@ def run_detectree2_pipeline(
 
     # Step 3: run detection on every tile.
     print("Step 3: Running predictions...")
-    predict_on_data(directory=tiles_dir, predictor=predictor)
-
-    # detectree2 writes into ./predictions, so move the files where we want them.
-    print("Fixing prediction output path...")
-    default_pred_dir = os.path.join(os.getcwd(), "predictions")
-
-    if os.path.exists(default_pred_dir):
-        for f in os.listdir(default_pred_dir):
-            src = os.path.join(default_pred_dir, f)
-            dst = os.path.join(pred_dir, f)
-            if os.path.isfile(src):
-                shutil.move(src, dst)
-    else:
-        raise RuntimeError("No predictions folder found!")
+    # Write predictions into this run's own folder. The default folder is
+    # shared, so two runs at the same time would mix up their files.
+    os.makedirs(pred_dir, exist_ok=True)
+    predict_on_data(directory=tiles_dir, out_folder=pred_dir, predictor=predictor)
 
     # Step 4: turn the per-tile predictions into GeoJSON.
     print("Step 4: Convert predictions to GeoJSON...")

@@ -69,13 +69,15 @@
     .viewnav .vs:hover{color:var(--green-d);background:rgba(255,253,247,.6)}
     .viewnav .vs:focus-visible{outline:2px solid var(--green);outline-offset:1px}
     /* Highlight the current view from the router's body class. */
-    body:not(.show-guide):not(.wt-show) .viewnav .vs-app,
+    body:not(.show-guide):not(.wt-show):not(.gal-show) .viewnav .vs-app,
     body.wt-show    .viewnav .vs-wt,
+    body.gal-show   .viewnav .vs-gal,
     body.show-guide .viewnav .vs-guide{
       background:var(--card);color:var(--green-d);
       box-shadow:0 1px 2px rgba(34,40,31,.13)}
-    body:not(.show-guide):not(.wt-show) .viewnav .vs-app svg,
+    body:not(.show-guide):not(.wt-show):not(.gal-show) .viewnav .vs-app svg,
     body.wt-show    .viewnav .vs-wt svg,
+    body.gal-show   .viewnav .vs-gal svg,
     body.show-guide .viewnav .vs-guide svg{opacity:1}
     #appbar #whoami{flex:none}
     @media(max-width:900px){
@@ -530,6 +532,84 @@
     .guide-wrap code{background:#f1eee4;border-radius:3px;padding:1px 5px;
       font-size:12.5px}
 
+    /* Public gallery (#/gallery). Open without sign-in, so it hides the sign-in screen. */
+    #gal-page{display:none}
+    body.gal-show #gal-page{display:block}
+    body.gal-show > .page-layout{display:none}
+    body.gal-show #auth-gate{display:none}
+    .gal-wrap{max-width:var(--col-app);margin:0 auto;padding:22px 20px 64px}
+    .gal-head h2{margin:0 0 4px;font-size:var(--t-xl)}
+    .gal-head p{margin:0 0 18px;color:var(--muted);font-size:var(--t-sm);max-width:70ch}
+    .gal-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:var(--gap)}
+    a.gal-card{display:flex;flex-direction:column;background:var(--card);border:1px solid var(--line);
+      border-radius:var(--r);overflow:hidden;text-decoration:none;color:var(--ink);
+      box-shadow:var(--shadow-1);transition:box-shadow .15s,border-color .15s}
+    a.gal-card:hover{border-color:#c7c1b0;box-shadow:var(--shadow-2)}
+    .gal-thumb{aspect-ratio:16/10;background:#e9e6da;display:block;width:100%;object-fit:cover}
+    .gal-thumb.gal-none{display:grid;place-items:center;color:var(--muted);font-size:var(--t-xs)}
+    .gal-body{padding:var(--pad-card-sm);display:flex;flex-direction:column;gap:3px;min-width:0}
+    .gal-badges{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:3px}
+    .gal-badge{font-size:var(--t-xs);font-weight:700;border-radius:99px;padding:1px 9px;white-space:nowrap}
+    .gal-badge.gal-all{background:var(--green-l);color:var(--green-d)}
+    .gal-badge.gal-crowns{background:#f6e7c8;color:#7a5210}
+    .gal-badge.gal-star{background:#ece8dc;color:var(--ink-2)}
+    .gal-title{font-weight:700;font-size:var(--t-md);line-height:1.3;overflow-wrap:anywhere}
+    .gal-meta{font-size:var(--t-sm);color:var(--ink-2)}
+    .gal-chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:5px;min-height:22px;align-items:center}
+    .gal-chip{font-size:var(--t-xs);background:#ece8dc;color:var(--ink-2);border-radius:var(--r-sm);padding:2px 8px}
+    .gal-quiet{font-size:var(--t-xs);color:var(--muted)}
+    .gal-pager{display:flex;justify-content:center;align-items:center;gap:14px;margin-top:22px;font-size:var(--t-sm)}
+    .gal-pg{border:1px solid #c7c1b0;border-radius:var(--r-sm);padding:8px 15px;font-weight:600;
+      color:var(--green-d);text-decoration:none;background:var(--card)}
+    a.gal-pg:hover{background:#f0ede3}
+    span.gal-pg{opacity:.45}
+    .gal-empty{background:var(--card);border:1px dashed #c7c1b0;border-radius:var(--r);
+      padding:28px 20px;text-align:center;color:var(--muted)}
+    /* One survey. */
+    .gal-dhead{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap;margin:10px 0 16px}
+    .gal-dhead h2{margin:0;font-size:24px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;overflow-wrap:anywhere}
+    .gal-dhead .gal-meta{margin-top:2px}
+    .gal-desc{margin:0 0 16px;font-size:var(--t-sm);color:var(--ink-2);max-width:80ch}
+    .gal-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:var(--gap)}
+    .gal-stat{background:#ece8dc;border-radius:var(--r);padding:11px 14px}
+    .gal-stat span{display:block;font-size:var(--t-xs);color:var(--ink-2)}
+    .gal-stat b{font-size:22px;font-family:var(--serif)}
+    .gal-cols{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:var(--gap);align-items:start}
+    @media(max-width:860px){.gal-cols{grid-template-columns:minmax(0,1fr)}}
+    .gal-view{display:block;background:#e9e6da;border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+    .gal-view img{display:block;width:100%;height:auto;max-height:72vh;object-fit:contain}
+    .gal-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+    .gal-tabs button[aria-pressed="true"]{background:var(--ink);color:#fff;border-color:var(--ink)}
+    .gal-note{margin:8px 0 0;font-size:var(--t-xs);color:var(--muted)}
+    .gal-panel{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:var(--pad-card)}
+    .gal-panel h3{margin:0 0 10px;font-size:var(--t-md);font-family:var(--sans);font-weight:700}
+    .gal-panel h3:not(:first-child){margin-top:20px}
+    .gal-bar{display:grid;grid-template-columns:minmax(70px,110px) 1fr auto;gap:10px;align-items:center;
+      font-size:var(--t-sm);margin:7px 0}
+    .gal-bar span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .gal-bar i{display:block;height:9px;border-radius:2px;background:var(--green);min-width:2px}
+    .gal-bar i.gal-sw{border:1px solid rgba(34,40,31,.35)}
+    .gal-bar b{font-weight:400;font-variant-numeric:tabular-nums}
+    .gal-files{list-style:none;margin:0;padding:0}
+    .gal-files li{border-top:1px solid var(--line)}
+    .gal-files a{display:flex;justify-content:space-between;gap:12px;padding:10px 0;text-decoration:none;
+      color:var(--ink);font-size:var(--t-sm)}
+    .gal-files a:hover{color:var(--green-d)}
+    .gal-files small{font-family:var(--mono);color:var(--muted);white-space:nowrap}
+    a.gal-folder{display:flex;align-items:center;gap:12px;background:var(--green);color:#fff;
+      border-radius:var(--r);padding:12px 14px;margin:0 0 10px;text-decoration:none;
+      box-shadow:0 1px 3px rgba(0,0,0,.12);transition:background .15s}
+    a.gal-folder:hover{background:var(--green-d)}
+    a.gal-folder svg{width:22px;height:22px;flex:none}
+    a.gal-folder span{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.3}
+    a.gal-folder b{font-size:var(--t-md)}
+    a.gal-folder small{font-size:var(--t-xs);opacity:.85}
+    a.gal-folder i{font-style:normal;font-size:18px}
+    .gal-how{border-top:1px solid var(--line);margin-top:22px;padding-top:12px;font-size:var(--t-sm);color:var(--ink-2)}
+    #auth-gate a.gate-gal{color:var(--green-d);font-size:13px;font-weight:600;text-decoration:none;
+      border-bottom:1px solid transparent}
+    #auth-gate a.gate-gal:hover{border-bottom-color:var(--green-d)}
+
     /* Pipeline Walkthrough (#/walkthrough), shown via .wt-show on <body>. All selectors are wt- scoped. */
     #wt-page{display:none}
     body.wt-show #wt-page{display:block}
@@ -949,6 +1029,7 @@
               <b>Google SSO</b>.
               <span id="gateErr" class="gerr"></span>
             </div>
+            <a class="gate-gal" href="#/gallery">Browse shared surveys, no sign-in &rarr;</a>
           </div>
         </div>
 
@@ -987,6 +1068,7 @@
         <a class="vs vs-app"   href="#/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h16"/><path d="M12 20v-6"/><path d="M12 14a5 5 0 1 0-4.6-6.9A4 4 0 1 0 8 15"/><path d="M12 14a5 5 0 1 1 4.6-6.9A4 4 0 1 1 16 15"/></svg><span>Pipeline</span></a>
         <a class="vs vs-wt"    href="#/walkthrough"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="5 3 19 12 5 21 5 3"/></svg><span>Walkthrough</span></a>
         <a class="vs vs-guide" href="#/guide"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg><span>Guide</span></a>
+        <a class="vs vs-gal"   href="#/gallery"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg><span>Gallery</span></a>
       </nav>
       <span id="whoami"></span>
     </div>
@@ -1995,6 +2077,11 @@
   </div><!-- /wt-page -->
 
 
+  <!-- Public gallery (#/gallery). Filled by the gal* script at the end of the file. -->
+  <div id="gal-page">
+    <div class="gal-wrap" id="gal-root" aria-live="polite"></div>
+  </div>
+
   <!-- Full-size crown lightbox. Outside the review panel, which is rebuilt on every k change. -->
   <div id="crownLb" hidden role="dialog" aria-modal="true" aria-label="Crown image"
        onclick="closeCrown()">
@@ -2246,12 +2333,15 @@ function updateGuideZoom(){
 function route(){
   const onGuide = location.hash.startsWith("#/guide");
   const onWalk  = location.hash.startsWith("#/walkthrough");          // + walkthrough
+  const onGal   = location.hash.startsWith("#/gallery");              // + public gallery
   if(onGuide) renderGuide();
   if(onWalk && window.wtInit) window.wtInit();                        // + walkthrough
   document.body.classList.toggle("show-guide", onGuide);
   document.body.classList.toggle("wt-show", onWalk);                  // + walkthrough
+  document.body.classList.toggle("gal-show", onGal);                  // + public gallery
+  if(onGal && window.galRoute) window.galRoute();
   // Mark the current tab for screen readers.
-  const cur = onGuide ? "guide" : onWalk ? "wt" : "app";
+  const cur = onGuide ? "guide" : onWalk ? "wt" : onGal ? "gal" : "app";
   document.querySelectorAll("#appbar .vs").forEach(a =>
     a.setAttribute("aria-current", a.classList.contains("vs-" + cur) ? "page" : "false"));
   // A deep link looks like "#/guide#doc-conf_threshold", so scroll to that card.
@@ -3723,8 +3813,7 @@ async function finalize(){
       runFiles=((d.runs||[])[0]||{}).files_url||null;
     }catch(e){}
     const r=Object.assign({},rr,{state:"COMPLETED",
-      files_url:runFiles||pr.files_url||null,
-      consent:pr.consent,consent_at:pr.consent_at});
+      files_url:runFiles||pr.files_url||null});
     const d=r.downloads||{};
     let html='<span class="ok">completed.</span>';
     if(r.files_url) html+=` &middot; <a href="${r.files_url}" target="_blank"><b>Browse all output files →</b></a>`;
@@ -3736,7 +3825,7 @@ async function finalize(){
       '</div>';
     // Consent box: only when finalize produced results AND consent not yet given.
     const finalized = (r.state==="COMPLETED") && !!(d && d.kmz);
-    if(finalized && !r.consent_at) html+=consentBoxHtml(r.consent||0);
+    if(finalized && !r.consent_at) html+=consentBoxHtml(r.consent||0, runNo, pr.name);
     $("results").innerHTML=html; log("finalize done"); refreshProject();
   }catch(e){ $("results").innerHTML='<span class="err">'+e.message+'</span>'; log("finalize failed: "+e.message); }
   finally{ $("btnFinal").disabled=false; $("fprog").style.display="none"; }
@@ -3765,7 +3854,11 @@ async function showRunResults(n, entry){
   try{
     const r=await api(withPid("/api/v1/project/runs/"+encodeURIComponent(n)+"/results"));
     if(targetRun()!==n) return;          // another run was opened meanwhile
-    box.innerHTML='<b>Run '+n+' &mdash; final output</b>'+runResultsBody(r);
+    let html='<b>Run '+n+' &mdash; final output</b>'+runResultsBody(r);
+    // Ask for consent if this finalized run has no answer yet.
+    if(r.state==="COMPLETED" && (r.downloads||{}).kmz && !r.consent_at)
+      html+=consentBoxHtml(r.consent||0, n, r.project_name);
+    box.innerHTML=html;
   }catch(e){ box.innerHTML=""; }
 }
 
@@ -3784,11 +3877,11 @@ function newAnalysisFlow(){
 //  Data-sharing consent (captured after finalize)
 const CONSENT_LABELS = {
   0: "No — data not made public (retained for the fixed policy period only).",
-  1: "Yes, all data — all data (including labelled crowns) public for training and viewing.",
-  2: "Yes, unlabelled only — only the Step-1 unlabelled crown data public.",
+  1: "Yes, all data — the orthomosaic, detected crowns, species map and result files are shown in the public gallery, for viewing and training.",
+  2: "Yes, unlabelled only — the orthomosaic and detected crowns are shown in the public gallery; species names and result files stay private.",
 };
 // Rendered only until consent is given.
-function consentBoxHtml(current){
+function consentBoxHtml(current, run, name){
   const row=(v,txt)=>`
     <label style="display:flex;gap:9px;align-items:flex-start;font-weight:400;margin:6px 0">
       <input type="radio" name="consent" value="${v}" style="width:auto;flex:none;margin-top:3px"
@@ -3796,8 +3889,8 @@ function consentBoxHtml(current){
       <span>${txt}</span>
     </label>`;
   return `
-  <div id="consentBox" style="margin-top:14px;border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;background:#faf8f1">
-    <div style="font-weight:600;margin-bottom:6px">Data sharing consent</div>
+  <div id="consentBox" data-run="${escAttr(run==null?"":run)}" style="margin-top:14px;border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;background:#faf8f1">
+    <div style="font-weight:600;margin-bottom:6px">Data sharing consent${run==null?"":" &mdash; run "+esc(run)}</div>
     <p class="muted" style="margin:0 0 8px">
       Your uploaded data and results are retained for a fixed period for policy /
       compliance reasons only. By default they are <b>not</b> used for training or
@@ -3807,6 +3900,17 @@ function consentBoxHtml(current){
     ${row(0,CONSENT_LABELS[0])}
     ${row(1,CONSENT_LABELS[1])}
     ${row(2,CONSENT_LABELS[2])}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px">
+      <label style="font-weight:400">Public title
+        <input id="consentTitle" maxlength="80" value="${escAttr(name||"")}"></label>
+      <label style="font-weight:400">Place <span class="muted">(optional)</span>
+        <input id="consentPlace" maxlength="80" placeholder="e.g. Mehrauli, South Delhi"></label>
+    </div>
+    <p class="muted" style="margin:6px 0 0">
+      Used only if you choose Yes: this title and place appear with the pictures in the
+      <a href="#/gallery" target="_blank" rel="noopener">public gallery</a>. Your name and
+      email are never shown. This answer covers this run only.
+    </p>
     <button id="consentBtn" onclick="submitConsent()" style="margin-top:8px">Save consent</button>
     <span id="consentMsg" class="muted" style="margin-left:8px"></span>
   </div>`;
@@ -3817,12 +3921,24 @@ async function submitConsent(){
   const sel=document.querySelector('input[name="consent"]:checked');
   if(!sel){ $("consentMsg").innerHTML='<span class="err">pick an option first</span>'; return; }
   const consent=parseInt(sel.value,10);
+  const box=$("consentBox");
+  // Use the run number stored on the box.
+  const run=box && box.dataset.run;
+  const path=run ? "/api/v1/project/runs/"+encodeURIComponent(run)+"/consent" : "/api/v1/project/consent";
+  const body={consent, title:($("consentTitle")||{}).value||"", place:($("consentPlace")||{}).value||""};
   try{
-    await api(withPid("/api/v1/project/consent"),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({consent})});
-    // Consent is a one-time choice, remove the box from the UI completely.
-    const box=$("consentBox"); if(box) box.remove();
+    const r=await api(withPid(path),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+    // Replace the box with a short confirmation.
+    if(box){
+      const note=document.createElement("div");
+      note.className="muted"; note.style.marginTop="12px";
+      note.innerHTML = r.public_id
+        ? 'Consent saved. This run is now in the <a href="#/gallery/'+escAttr(r.public_id)+'">public gallery</a>.'
+        : 'Consent saved.';
+      box.replaceWith(note);
+    }
     log("consent saved: "+consent);
-  }catch(e){ const m=$("consentMsg"); if(m) m.innerHTML='<span class="err">'+e.message+'</span>'; }
+  }catch(e){ const m=$("consentMsg"); if(m) m.innerHTML='<span class="err">'+esc(e.message)+'</span>'; }
 }
 
 // Landing: the user's past runs and their FileBrowser links.
@@ -4327,6 +4443,186 @@ window.addEventListener("load", ()=>{
     if(!location.hash.startsWith("#/walkthrough")) stopVideo();
   });
   show(0);
+})();
+</script>
+<script>
+// Public gallery (#/gallery, #/gallery/<id>). Uses only /api/v1/public/*, no sign-in.
+(function(){
+  const root = document.getElementById("gal-root");
+  if(!root) return;
+  const base = (typeof API_BASE === "string" ? API_BASE : "");
+  const h = (v) => String(v == null ? "" : v).replace(/[&<>"']/g,
+    c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  const num = (n) => Number(n).toLocaleString("en-IN");
+  const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  function day(iso){
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || "");
+    return m ? (+m[3]) + " " + MONTHS[+m[2]-1] + " " + m[1] : (iso || "");
+  }
+  function size(b){
+    if(b >= 1048576) return (b/1048576).toFixed(1) + " MB";
+    if(b >= 1024) return Math.round(b/1024) + " KB";
+    return b + " B";
+  }
+  // Small plots need three decimals.
+  const area = (a) => a == null ? "" : (a >= 10 ? a.toFixed(0) : a >= 1 ? a.toFixed(1) : a.toFixed(3)) + " km\u00b2";
+  const joined = (parts) => parts.filter(Boolean).join(" · ");
+  function badges(it){
+    return '<span class="gal-badge ' + (it.tier === "all" ? "gal-all" : "gal-crowns") + '">'
+         + (it.tier === "all" ? "Species map" : "Crowns only") + '</span>'
+         + (it.starred ? '<span class="gal-badge gal-star">Featured</span>' : '');
+  }
+  async function get(path){
+    const r = await fetch(base + path, {headers:{Accept:"application/json"}});
+    if(!r.ok) throw new Error(r.status === 404 ? "not-found" : "HTTP " + r.status);
+    return r.json();
+  }
+  let seq = 0;      // ignore replies for a page the user already left
+
+  function card(it){
+    const crowns = it.crowns == null ? "" : num(it.crowns) + (it.crowns === 1 ? " crown" : " crowns");
+    let line, chips;
+    if(it.tier === "all"){
+      line = joined([crowns, it.species_count ? it.species_count + " species" : ""]);
+      const more = (it.species_count || 0) - (it.top_species || []).length;
+      chips = (it.top_species || []).map(s => '<span class="gal-chip">' + h(s) + '</span>').join("")
+            + (more > 0 ? '<span class="gal-chip">+' + more + '</span>' : "");
+    }else{
+      line = crowns ? crowns + " outlined" : "";
+      chips = '<span class="gal-quiet">Species not shared</span>';
+    }
+    const img = it.thumb_url
+      ? '<img class="gal-thumb" loading="lazy" alt="" src="' + h(base + it.thumb_url) + '">'
+      : '<span class="gal-thumb gal-none">No picture</span>';
+    return '<a class="gal-card" href="#/gallery/' + encodeURIComponent(it.id) + '">' + img
+      + '<span class="gal-body"><span class="gal-badges">' + badges(it) + '</span>'
+      + '<span class="gal-title">' + h(it.title) + '</span>'
+      + '<span class="gal-meta">' + h(joined([day(it.date), area(it.area_km2)])) + '</span>'
+      + '<span class="gal-meta">' + h(line) + '</span>'
+      + '<span class="gal-chips">' + chips + '</span></span></a>';
+  }
+
+  const HEAD = '<div class="gal-head"><h2>Shared surveys</h2>'
+    + '<p>Drone surveys processed here and shared by the people who ran them. '
+    + '“Species map” surveys include the named species and the result files; '
+    + '“Crowns only” surveys show the orthomosaic and the detected tree crowns.</p></div>';
+
+  async function showList(page){
+    const mine = ++seq;
+    root.innerHTML = HEAD + '<p class="muted">Loading…</p>';
+    let d;
+    try{ d = await get("/api/v1/public/gallery?page=" + page); }
+    catch(e){
+      if(mine === seq) root.innerHTML = HEAD + '<div class="gal-empty">The gallery could not be loaded. Try again in a moment.</div>';
+      return;
+    }
+    if(mine !== seq) return;
+    if(!d.items.length){
+      root.innerHTML = HEAD + (page > 1
+        ? '<div class="gal-empty">Nothing on this page. <a href="#/gallery">Back to the first page</a></div>'
+        : '<div class="gal-empty">No surveys have been shared yet.</div>');
+      return;
+    }
+    let pager = "";
+    if(d.pages > 1){
+      const link = (p, label, on) => on
+        ? '<a class="gal-pg" href="#/gallery?p=' + p + '">' + label + '</a>'
+        : '<span class="gal-pg" aria-disabled="true">' + label + '</span>';
+      pager = '<nav class="gal-pager" aria-label="Pages">' + link(d.page - 1, "Previous", d.page > 1)
+            + '<span>Page ' + d.page + ' of ' + d.pages + '</span>'
+            + link(d.page + 1, "Next", d.page < d.pages) + '</nav>';
+    }
+    root.innerHTML = HEAD + '<div class="gal-grid">' + d.items.map(card).join("") + '</div>' + pager;
+  }
+
+  async function showItem(id){
+    const mine = ++seq;
+    const back = '<a class="nav-link" href="#/gallery">&larr; All shared surveys</a>';
+    root.innerHTML = back + '<p class="muted">Loading…</p>';
+    let it;
+    try{ it = await get("/api/v1/public/gallery/" + encodeURIComponent(id)); }
+    catch(e){
+      if(mine === seq) root.innerHTML = back + '<div class="gal-empty" style="margin-top:14px">'
+        + (e.message === "not-found" ? "This survey is not shared, or no longer exists."
+                                     : "This survey could not be loaded. Try again in a moment.") + '</div>';
+      return;
+    }
+    if(mine !== seq) return;
+
+    const stat = (label, value) => value ? '<div class="gal-stat"><span>' + label + '</span><b>' + h(value) + '</b></div>' : "";
+    const stats = stat("Crowns", it.crowns == null ? "" : num(it.crowns))
+      + (it.tier === "all" ? stat("Species", it.species_count || "") : "")
+      + stat("Area", area(it.area_km2))
+      + stat("Resolution", it.gsd_cm ? (+it.gsd_cm.toFixed(1)) + " cm/px" : "");
+
+    const views = it.views || [];
+    // Show the species map first if there is one, else the outlines.
+    const first = views.find(v => v.kind === "species_map") || views.find(v => v.kind === "overlay") || views[0];
+    const viewer = first
+      ? '<a class="gal-view" id="gal-view" target="_blank" rel="noopener" href="' + h(base + first.url) + '">'
+        + '<img id="gal-img" alt="' + h(first.label + " of " + it.title) + '" src="' + h(base + first.url) + '"></a>'
+        + (views.length > 1 ? '<div class="gal-tabs">' + views.map(v =>
+            '<button class="ghost" data-url="' + h(base + v.url) + '" data-label="' + h(v.label)
+            + '" aria-pressed="' + (v === first) + '">' + h(v.label) + '</button>').join("") + '</div>' : "")
+        + '<p class="gal-note">Overview picture, shrunk for the screen. Click it to open it on its own.</p>'
+      : '<div class="gal-empty">No picture for this survey.</div>';
+
+    let panel = "";
+    if(it.tier === "all" && (it.species || []).length){
+      const top = Math.max.apply(null, it.species.map(s => s.count)) || 1;
+      panel += '<h3>Crowns per species</h3>' + it.species.map(s =>
+        '<div class="gal-bar"><span title="' + h(s.name) + '">' + h(s.name) + '</span>'
+        + '<span><i class="gal-sw" style="width:' + Math.max(2, 100 * s.count / top).toFixed(1)
+        + '%;background:' + h(s.color) + '"></i></span><b>' + num(s.count) + '</b></div>').join("");
+    }
+    const files = (it.downloads || []).map(f =>
+      '<li><a href="' + h(base + f.url) + '" download><span>' + h(f.label) + '</span><small>'
+      + size(f.bytes) + ' ↓</small></a></li>').join("");
+    // Link to the full run folder, shown as a button.
+    const folder = it.files_url
+      ? '<a class="gal-folder" href="' + h(it.files_url) + '" target="_blank" rel="noopener">'
+        + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>'
+        + '<span><b>Browse every file of this run</b><small>Opens the run folder in FileBrowser</small></span>'
+        + '<i aria-hidden="true">↗</i></a>' : "";
+    if(files || folder) panel += '<h3>Files</h3>' + folder
+      + (files ? '<ul class="gal-files">' + files + '</ul>' : "");
+    if(it.tier !== "all")
+      panel += '<p class="gal-note"' + (files ? "" : ' style="margin:0"') + '>The owner shared the orthomosaic and the detected crowns. Species names and result files are not shared.</p>';
+
+    root.innerHTML = back
+      + '<div class="gal-dhead"><div><h2>' + h(it.title) + ' ' + badges(it) + '</h2>'
+      + '<div class="gal-meta">' + h(joined([it.place, it.date ? "processed " + day(it.date) : ""])) + '</div></div></div>'
+      + (it.description ? '<p class="gal-desc">' + h(it.description) + '</p>' : "")
+      + (stats ? '<div class="gal-stats">' + stats + '</div>' : "")
+      + '<div class="gal-cols"><div>' + viewer + '</div>'
+      + (panel ? '<div class="gal-panel">' + panel + '</div>' : "") + '</div>'
+      + ((it.how || []).length ? '<div class="gal-how"><b>How it was made</b> · ' + h(it.how.join(" · ")) + '</div>' : "");
+  }
+
+  // Switch between pictures.
+  root.addEventListener("click", (e) => {
+    const b = e.target.closest && e.target.closest(".gal-tabs button");
+    if(!b) return;
+    const img = document.getElementById("gal-img"), a = document.getElementById("gal-view");
+    if(!img || !a) return;
+    img.src = b.dataset.url; a.href = b.dataset.url;
+    img.alt = b.dataset.label;
+    root.querySelectorAll(".gal-tabs button").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
+  });
+
+  window.galRoute = function(){
+    // Pause the sign-in screen's video while it is hidden.
+    const gv = document.querySelector("#auth-gate video"); if(gv) gv.pause();
+    const who = document.getElementById("whoami");
+    if(who && !who.innerHTML.trim()) who.innerHTML = '<a class="nav-link" href="#/">Sign in</a>';
+    const rest = location.hash.slice("#/gallery".length);
+    const id = /^\/([A-Za-z0-9_-]+)/.exec(rest);
+    if(id) return showItem(id[1]);
+    const p = /[?&]p=(\d+)/.exec(rest);
+    showList(p ? Math.max(1, parseInt(p[1], 10)) : 1);
+  };
+  // Show the gallery if the page was opened on a gallery link.
+  if(location.hash.startsWith("#/gallery")) window.galRoute();
 })();
 </script>
 </body>

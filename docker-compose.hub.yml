@@ -61,6 +61,7 @@ services:
       - ./code:/code
       - ./frontend:/frontend
       - ./data:/data
+      - ./starred:/starred:ro   # hand-picked gallery runs, see starred/README.md
       - ${HOST_MODELS_DIR:?Set HOST_MODELS_DIR in .env to the detector weights folder}:/models:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"

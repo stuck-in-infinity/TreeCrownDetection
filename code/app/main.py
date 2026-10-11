@@ -38,9 +38,13 @@ async def lifespan(app: FastAPI):
     from app.services.run_backfill import backfill_runs
 
     _db = SessionLocal()
+    # Move old project-level consent onto runs.
+    from app.services.gallery import backfill_run_consent
+
     try:
         backfill_runs(_db)
         recover_interrupted_runs(_db)
+        backfill_run_consent(_db)
     finally:
         _db.close()
 
@@ -88,6 +92,7 @@ _AUDIT_GET_MARKERS = (
     "/clustering",          # the review screen's data, k-selection and t-SNE plots
     "/crowns/",             # individual crown images
     "/detection/overlay",   # the detection overlay
+    "/download/",           # public gallery downloads (anonymous by design)
 )
 
 def _should_audit(method: str, path: str) -> bool:

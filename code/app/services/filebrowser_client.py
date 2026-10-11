@@ -44,6 +44,17 @@ def create_project_share(project_id: str) -> str:
     Returns the share hash, for example 'fNqIKDS3'. Raises RuntimeError on any
     failure, leaving it to the caller to decide whether to report or ignore it.
     """
+    return _create_share(project_id)
+
+def create_run_share(project_id: str, run: int) -> str:
+    """Create a permanent public share for one run's folder.
+
+    The public gallery uses this link. The project share is not used there
+    because it also opens the uploads and every other run.
+    """
+    return _create_share(f"{project_id}/work/run_{int(run)}")
+
+def _create_share(rel_path: str) -> str:
     base = settings.filebrowser_base_url.rstrip("/")
     try:
         token = _get_token()
@@ -66,7 +77,7 @@ def create_project_share(project_id: str) -> str:
 
     body = json.dumps({}).encode()
     prefix = (settings.filebrowser_projects_path or "").strip().strip("/")
-    share_path = f"{prefix}/{project_id}" if prefix else project_id
+    share_path = f"{prefix}/{rel_path}" if prefix else rel_path
     req = urllib.request.Request(
         f"{base}/api/share/{urllib.parse.quote(share_path)}",
         data=body,

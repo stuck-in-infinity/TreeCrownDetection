@@ -27,6 +27,9 @@ log = get_logger("app.api")
 class ConsentBody(BaseModel):
     # 0 = no / not given, 1 = yes all data, 2 = yes unlabelled (Step-1) only.
     consent: int
+    # Title and place shown in the public gallery (used for 1 and 2).
+    title: str | None = None
+    place: str | None = None
 
 def _run(project) -> int:
     return getattr(project, "current_run", 1) or 1
@@ -101,6 +104,51 @@ def results(project=Depends(get_project)):
     _require_completed(project)
     return build_results_payload(project)
 
+def _save_consent(db: Session, project, run: int, body: ConsentBody) -> dict:
+    """Save the consent on the run and update the public gallery."""
+    from app.services import gallery, run_registry
+
+    if body.consent not in (0, 1, 2):
+        raise HTTPException(400, {"code": "BAD_REQUEST",
+            "message": "consent must be one of 0 (no), 1 (all), 2 (unlabelled only)",
+            "project_id": project.id,
+            "hint": "pick one of the three consent choices and resubmit — 0 to decline, "
+                    "1 to share all data, 2 to share unlabelled data only"})
+    row = run_registry.get_run(db, project, run)
+    if row is None and run == (project.current_run or 1):
+        row = run_registry.mirror(db, project)
+    if row is None:
+        raise HTTPException(404, {
+            "code": ERROR_CODES["RUN_NOT_FOUND"],
+            "message": f"This project has no run {run}.",
+            "project_id": project.id,
+            "hint": "check the run history and use a run number it lists"})
+    if row.state != "COMPLETED":
+        raise HTTPException(425, {"code": "NOT_READY",
+            "message": f"Run {run} has no results to share yet (state {row.state})",
+            "project_id": project.id,
+            "hint": "consent is asked once a run is finalized — run Finalize first"})
+    gallery.publish_run(db, project, row, body.consent,
+                        title=body.title, place=body.place)
+    return {"project_id": project.id, "run": row.number, "consent": row.consent,
+            "consent_at": row.consent_at.isoformat(),
+            "public_id": row.id if row.public_at is not None else None}
+
+@router.post("/projects/{project_id}/runs/{run}/consent")
+@router.post("/project/runs/{run}/consent")
+def submit_run_consent(
+    run: int,
+    body: ConsentBody,
+    project=Depends(get_project),
+    db: Session = Depends(get_db),
+):
+    """Save the owner's consent for one finalized run.
+
+    0 = no, 1 = share all data, 2 = share unlabelled data only.
+    1 and 2 put the run in the public gallery.
+    """
+    return _save_consent(db, project, run, body)
+
 @router.post("/projects/{project_id}/consent")
 @router.post("/project/consent")
 def submit_consent(
@@ -108,23 +156,8 @@ def submit_consent(
     project=Depends(get_project),
     db: Session = Depends(get_db),
 ):
-    """Capture the user's data-sharing consent after finalize.
-
-    0 = no / not given, 1 = yes to all data, 2 = yes to unlabelled (Step-1) only.
-    """
-    if body.consent not in (0, 1, 2):
-        raise HTTPException(400, {"code": "BAD_REQUEST",
-            "message": "consent must be one of 0 (no), 1 (all), 2 (unlabelled only)",
-            "project_id": project.id,
-            "hint": "pick one of the three consent choices and resubmit — 0 to decline, "
-                    "1 to share all data, 2 to share unlabelled data only"})
-    _require_completed(project)
-    project.consent = body.consent
-    project.consent_at = naive_now()
-    db.add(project)
-    db.commit()
-    return {"project_id": project.id, "consent": project.consent,
-            "consent_at": project.consent_at.isoformat()}
+    """Older route without a run number: applies to the current run."""
+    return _save_consent(db, project, _run(project), body)
 
 @router.get("/projects/{project_id}/results/kmz")
 @router.get("/project/results/kmz")
@@ -278,7 +311,18 @@ def _run_images(project_id: str, run: int) -> dict:
                             if _can_show_species_map(project_id, run) else None),
     }
 
-def _run_results_payload(project, run: int) -> dict:
+def _run_consent(db, project, run: int) -> dict:
+    """Return the run's consent, or "not answered" if there is no run row."""
+    from app.services import run_registry
+
+    row = run_registry.get_run(db, project, run) if db is not None else None
+    return {
+        "consent": (row.consent or 0) if row else 0,
+        "consent_at": row.consent_at.isoformat() if row and row.consent_at else None,
+        "state": row.state if row else None,
+    }
+
+def _run_results_payload(project, run: int, db=None) -> dict:
     """Results summary for a specific (possibly archived) run, with run-scoped
     download URLs. 404s if that run never produced final outputs."""
     p = project_paths(project.id, run)
@@ -312,6 +356,8 @@ def _run_results_payload(project, run: int) -> dict:
         "validation": _read_validation(p),
         "downloads": downloads,
     }
+    payload.update(_run_consent(db, project, run))
+    payload["project_name"] = project.name
     payload.update(_run_images(project.id, run))
     payload.update(analyze_asset_fields(project, run))
     return payload
@@ -486,7 +532,8 @@ def list_runs(project=Depends(get_project), ortho_id: str | None = None,
 
 @router.get("/projects/{project_id}/runs/{run}/results")
 @router.get("/project/runs/{run}/results")
-def run_results(run: int, project=Depends(get_project)):
+def run_results(run: int, project=Depends(get_project),
+                db: Session = Depends(get_db)):
     last = project.current_run or 1
     if run < 1 or run > last:
         log.warning("404 RUN_NOT_FOUND project=%s run=%s range=1..%s",
@@ -497,7 +544,7 @@ def run_results(run: int, project=Depends(get_project)):
             "project_id": project.id,
             "hint": "check the run history for this project and use a run number it lists",
             "details": {"run": run, "available_runs": list(range(1, last + 1))}})
-    return _run_results_payload(project, run)
+    return _run_results_payload(project, run, db)
 
 @router.get("/projects/{project_id}/runs/{run}/results/{asset}")
 @router.get("/project/runs/{run}/results/{asset}")

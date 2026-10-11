@@ -79,3 +79,6 @@ docs/CODEBASE_MAP.md
 REVIEW_AND_RESUME_PLAN.md
 CLAUDE.md
 airflow
+# Hand-picked gallery runs: the files are data, only the format note is tracked.
+/starred/*
+!/starred/README.md

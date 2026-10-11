@@ -186,6 +186,10 @@ class Settings(BaseSettings):
     # https://api.example.com. Leave blank to emit relative hrefs.
     public_base_url: str = ""
 
+    # Folder of starred runs, shown first in the gallery. See starred/README.md.
+    starred_dir: str = ""                 # TCP_STARRED_DIR
+    gallery_page_size: int = 8            # TCP_GALLERY_PAGE_SIZE, cards per page
+
     # Web UI folder, served at "/". Blank: frontend/ next to code/.
     frontend_dir: str = ""                # TCP_FRONTEND_DIR
 

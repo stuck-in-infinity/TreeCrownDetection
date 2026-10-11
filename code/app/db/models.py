@@ -187,6 +187,20 @@ class Run(Base):
     #: produces, so the frontend renders a run failure like any other.
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Consent for this run: 0 no, 1 all data, 2 unlabelled only.
+    # The public gallery uses this. Project.consent is derived from it.
+    consent: Mapped[int] = mapped_column(Integer, default=0)
+    consent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # Title and place the owner chose to show publicly.
+    public_title: Mapped[str | None] = mapped_column(String, nullable=True)
+    public_place: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Set when the run is listed in the gallery. Empty means not listed.
+    public_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    # Numbers shown on the gallery card (crowns, area, resolution, species).
+    public_summary: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # FileBrowser share for this run's folder only (consent 1).
+    share_hash: Mapped[str | None] = mapped_column(String, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime, default=naive_now)
     started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

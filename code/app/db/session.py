@@ -285,6 +285,16 @@ def _migrate_sqlite_add_columns() -> None:
         "cluster_labels": {
             "run_id": "TEXT",
         },
+        # Per-run consent and gallery fields.
+        "runs": {
+            "consent": "INTEGER DEFAULT 0",
+            "consent_at": "DATETIME",
+            "public_title": "TEXT",
+            "public_place": "TEXT",
+            "public_at": "DATETIME",
+            "public_summary": "JSON",
+            "share_hash": "TEXT",
+        },
     }
     with engine.begin() as conn:
         for table, cols in wanted.items():
