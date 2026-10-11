@@ -1,6 +1,6 @@
 """Public gallery routes. No sign-in needed.
 
-These show shared runs and starred folders to anyone. A request gives only a
+These show shared runs and starred runs to anyone. A request gives only a
 public id and a file name from a fixed list, never a path. What each item is
 allowed to show is decided in services/gallery.py.
 """
@@ -105,8 +105,7 @@ def gallery_item(item_id: str, db: Session = Depends(get_db)):
 def gallery_image(item_id: str, kind: str, size: str = "preview",
                   db: Session = Depends(get_db)):
     item = _item(db, item_id)
-    if (kind == "species_map" and not item.starred
-            and item.allows(gallery.TIER_ALL)):
+    if kind == "species_map" and item.allows(gallery.TIER_ALL):
         # Older runs have no species map file yet, so draw it now.
         from app.api.v1.results import _ensure_species_map
         _ensure_species_map(item.project_id, item.run_number)

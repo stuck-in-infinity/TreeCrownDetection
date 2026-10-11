@@ -109,9 +109,16 @@ def run(dry_run: bool = False) -> dict:
             .filter(models.Project.updated_at < cutoff)
             .all()
         )
+        # Starred runs live in their project folder, so keep those projects.
+        from app.services.gallery import starred_project_ids
+        starred = starred_project_ids()
+
         for p in expired:
             if p.state in _BUSY_STATES:
                 summary["skipped_busy"].append(p.id)
+                continue
+            if p.id in starred:
+                summary["retained"].append(p.id)
                 continue
             consent = getattr(p, "consent", 0) or 0
 

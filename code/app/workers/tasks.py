@@ -418,6 +418,9 @@ def job_b_finalize(self, project_id: str, job_id: str, run: int | None = None):
 
         _set_job(db, job, state="SUCCEEDED", current_stage="done",
                  progress=1.0, finished_at=naive_now())
+        # Labels may have changed, so update the public gallery card.
+        from app.services import gallery
+        gallery.refresh_run_card(db, project, run)
         _set_state(db, project, "COMPLETED", run=run)
 
       except Exception as e:

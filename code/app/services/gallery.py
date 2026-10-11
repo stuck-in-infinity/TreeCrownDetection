@@ -1,15 +1,16 @@
 """Public gallery: decides what a visitor without sign-in can see.
 
-Items come from two places:
-  * runs whose owner gave consent (Run.consent 1 or 2)
-  * folders in the starred directory, added by an admin (see starred/README.md)
+Every item is a run, read from its own work/run_<n> folder. A run is shown if:
+  * its owner gave consent (Run.consent 1 or 2), or
+  * an admin listed it in starred.json (see starred/README.md). These are
+    shown first, with a "Featured" badge.
 
 Each item has a tier:
   crowns  orthomosaic picture, crown outlines
   all     the above + species map, KMZ, crown table, STAC item, files link
 
 The tier is checked here for every file, so a "crowns" item can never give
-out a species file. A bad starred folder is skipped.
+out a species file. A bad starred.json entry is skipped, it never causes an error.
 """
 from __future__ import annotations
 
@@ -19,7 +20,6 @@ import json
 import os
 import re
 import threading
-import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -35,12 +35,9 @@ log = get_logger("app.gallery")
 TIER_ALL = "all"
 TIER_CROWNS = "crowns"
 
-# Starred items get the id "s-<folder name>". Runs use their uuid.
-STARRED_PREFIX = "s-"
-_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
+STARRED_FILE = "starred.json"
 
-# Where to look for each file inside an item's folder. The simple name is
-# tried first (starred folder), then the path used inside a run folder.
+# Where to look for each file inside a run folder.
 _CANDIDATES = {
     "overlay": ("overlay.png", "overlay.jpg", "overlay.jpeg",
                 "detectree/*/overlay.png"),
@@ -90,10 +87,8 @@ class Item:
     files_url: str | None = None
     how: list[str] = field(default_factory=list)
     description: str | None = None
-    source_run_id: str | None = None   # starred only: run id from meta.json
-    source_run: tuple | None = None    # starred only: (project_id, run) from stac_item.json
-    project_id: str | None = None      # runs only
-    run_number: int | None = None      # runs only
+    project_id: str | None = None
+    run_number: int | None = None
 
     def allows(self, tier: str) -> bool:
         return tier == TIER_CROWNS or self.tier == TIER_ALL
@@ -144,8 +139,7 @@ def image_kinds(item: Item) -> list[str]:
 
 def _species_map_drawable(item: Item) -> bool:
     # Older runs have no species map file, but it can be drawn from their data.
-    return (not item.starred
-            and find(item.dir, "crown_master") is not None
+    return (find(item.dir, "crown_master") is not None
             and find(item.dir, "crowns") is not None
             and find(item.dir, "raster") is not None)
 
@@ -474,6 +468,10 @@ def starred_root() -> str:
     return str(Path(__file__).resolve().parents[3] / "starred")
 
 
+def starred_file() -> str:
+    return os.path.join(starred_root(), STARRED_FILE)
+
+
 def _http_url(value) -> str | None:
     value = str(value or "").strip()
     return value if re.match(r"^https?://[^\s<>\"']+$", value) else None
@@ -486,172 +484,199 @@ def _number(value, cast=float):
         return None
 
 
-def _title_from_slug(slug: str) -> str:
-    """Make a title from the folder name: sanjay-van_plot-3 -> Sanjay van plot 3."""
-    words = re.sub(r"[-_]+", " ", slug).strip()
-    return (words[:1].upper() + words[1:]) or slug
+_starred_lock = threading.Lock()
+_starred_cache: dict = {"stamp": None, "entries": [], "error": None}
+_summary_cache: dict = {}
 
 
-def _stac_source(folder: str) -> tuple | None:
-    """Find which run a starred folder was copied from.
+def read_starred_entries() -> tuple[list[dict], str | None]:
+    """Read starred.json. Returns (entries, error).
 
-    Reads the project id and run number from stac_item.json, if present.
+    The file is read again only when it changes, so edits show up without a
+    restart. A missing file means no starred runs.
     """
-    path = find(folder, "stac")
-    if not path:
-        return None
+    path = starred_file()
     try:
-        with open(path, encoding="utf-8") as f:
-            props = (json.load(f).get("properties") or {})
-        pid, run = props.get("project_id"), props.get("run")
-        return (str(pid), int(run)) if pid and run is not None else None
-    except Exception:                    # noqa: BLE001
-        return None
-
-
-def _load_starred(slug: str, folder: str) -> tuple[Item | None, int, str | None]:
-    """Read one starred folder. Returns (item, order, problem).
-
-    item is None if the folder cannot be shown; problem says why.
-    """
-    # meta.json is optional. If it exists but is broken, the folder is hidden.
-    meta_path = os.path.join(folder, "meta.json")
-    meta = {}
-    if os.path.isfile(meta_path):
+        stamp = os.path.getmtime(path)
+    except OSError:
+        return [], None
+    with _starred_lock:
+        if _starred_cache["stamp"] == stamp:
+            return _starred_cache["entries"], _starred_cache["error"]
+        entries, error = [], None
         try:
-            with open(meta_path, encoding="utf-8") as f:
-                meta = json.load(f)
+            with open(path, encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, dict):
+                data = data.get("starred")
+            if not isinstance(data, list):
+                error = 'starred.json must be a list, or {"starred": [...]}'
+            else:
+                entries = [e for e in data if isinstance(e, dict)]
         except Exception as exc:         # noqa: BLE001
-            return None, 0, f"meta.json is not valid JSON ({exc})"
-        if not isinstance(meta, dict):
-            return None, 0, "meta.json must be a JSON object"
-    if meta.get("hidden") is True:
-        return None, 0, "hidden"
-    title = _clean(meta.get("title"), 80) or _title_from_slug(slug)
-    if find(folder, "overlay") is None:
-        return None, 0, "no overlay.png / overlay.jpg (the crown-outline picture)"
+            error = f"starred.json is not valid JSON ({exc})"
+        if error:
+            log.warning(error)
+        _starred_cache.update(stamp=stamp, entries=entries, error=error)
+        return entries, error
 
+
+def starred_project_ids() -> set[str]:
+    """Projects that hold a starred run. Retention must not delete these."""
+    return {str(e["project_id"]) for e in read_starred_entries()[0] if e.get("project_id")}
+
+
+def _entry_label(entry: dict, index: int) -> str:
+    return str(entry.get("title") or f"entry {index + 1}")
+
+
+def _find_starred_run(db, entry: dict):
+    """Find the run a starred.json entry points to, or None."""
+    if entry.get("run_id"):
+        return db.get(models.Run, str(entry["run_id"]))
+    number = _number(entry.get("run"), int)
+    if not entry.get("project_id") or number is None:
+        return None
+    return (db.query(models.Run)
+            .filter_by(project_id=str(entry["project_id"]), number=number).first())
+
+
+def _live_summary(run, tier: str) -> dict:
+    """Card numbers for a starred run, read from its folder and cached.
+
+    Read again when the run's result files change (for example after a relabel).
+    """
+    base = run_dir(run.project_id, run.number)
+    stamp = tuple(os.path.getmtime(f) if f else 0
+                  for f in (find(base, "crowns"), find(base, "crown_master")))
+    cached = _summary_cache.get((run.id, tier))
+    if cached and cached[0] == stamp:
+        return dict(cached[1])
+    summary = build_summary(base, tier)
+    _summary_cache[(run.id, tier)] = (stamp, summary)
+    return dict(summary)
+
+
+def _starred_item(db, entry: dict) -> tuple[Item | None, str | None]:
+    """Build the gallery item for one starred.json entry. Returns (item, problem)."""
+    if entry.get("hidden") is True:
+        return None, "hidden"
+    run = _find_starred_run(db, entry)
+    if run is None or run.project is None:
+        return None, 'run not found (give "project_id" and "run", or "run_id")'
+    base = run_dir(run.project_id, run.number)
+    if find(base, "overlay") is None:
+        return None, "the run has no detection overlay"
+
+    # Tier: "share" in the entry, else the owner's consent, else everything.
     problem = None
-    share = str(meta.get("share") or TIER_ALL).strip().lower()
-    if share not in (TIER_ALL, TIER_CROWNS):
+    share = str(entry.get("share") or "").strip().lower()
+    if share and share not in (TIER_ALL, TIER_CROWNS):
         problem = f'"share" must be "all" or "crowns", got {share!r}; showing crowns only'
         share = TIER_CROWNS
+    tier = share or _tier_of(run.consent) or TIER_ALL
 
-    summary = build_summary(folder, share)
+    summary = _live_summary(run, tier)
     for key, src, cast in (("crowns", "crowns", int), ("area_km2", "area_km2", float),
                            ("gsd_cm", "resolution_cm", float)):
-        given = _number(meta.get(src), cast)
+        given = _number(entry.get(src), cast)
         if given is not None and given >= 0:
             summary[key] = given
 
-    files_url = None
-    if meta.get("files_url"):
-        files_url = _http_url(meta["files_url"])
+    files_url = _run_files_url(run)
+    if entry.get("files_url"):
+        files_url = _http_url(entry["files_url"])
         if files_url is None:
             problem = '"files_url" is not an http(s) link; left out'
 
-    how = meta.get("how")
+    how = entry.get("how")
     if isinstance(how, str):
         how = [how]
     how = [h for h in (_clean(x, 200) for x in (how if isinstance(how, list) else [])) if h]
+    if not how:
+        how = _run_how(run)
+        if tier == TIER_ALL and run.chosen_k:
+            how.append(f"{run.chosen_k} groups, named by the owner")
 
-    order = _number(meta.get("order"), int)
+    when = run.finished_at or run.public_at
     item = Item(
-        id=STARRED_PREFIX + slug,
-        dir=folder,
-        tier=share,
+        id=run.id,
+        dir=base,
+        tier=tier,
         starred=True,
-        title=title,
-        place=_clean(meta.get("place"), 80),
-        date=_clean(meta.get("date"), 32),
+        title=(_clean(entry.get("title"), 80) or _clean(run.public_title, 80)
+               or _clean(run.project.name, 80) or "Untitled survey"),
+        place=_clean(entry.get("place"), 80) or _clean(run.public_place, 80),
+        date=_clean(entry.get("date"), 32) or (when.date().isoformat() if when else None),
         summary=summary,
-        files_url=files_url if share == TIER_ALL else None,
+        files_url=files_url if tier == TIER_ALL else None,
         how=how,
-        description=_clean(meta.get("description"), 600),
-        source_run_id=_clean(meta.get("run_id"), 64),
-        source_run=_stac_source(folder),
+        description=_clean(entry.get("description"), 600),
+        project_id=run.project_id,
+        run_number=run.number,
     )
-    return item, (order if order is not None else 1000), problem
+    return item, problem
 
 
-def _folder_stamp(folder: str) -> float:
-    """Latest change time of the folder and the files directly inside it."""
-    stamp = 0.0
-    try:
-        stamp = os.path.getmtime(folder)
-        with os.scandir(folder) as entries:
-            for e in entries:
-                stamp = max(stamp, e.stat().st_mtime)
-    except OSError:
-        pass
-    return stamp
+def scan_starred(db) -> tuple[list[Item], dict[str, str]]:
+    """Return the starred items in display order, and the skipped entries.
 
-
-_starred_lock = threading.Lock()
-_starred_cache: dict = {"at": 0.0, "items": [], "problems": {}, "by_slug": {}}
-_RESCAN_SECONDS = 15.0
-
-
-def scan_starred(force: bool = False) -> tuple[list[Item], dict[str, str]]:
-    """Return the starred items in display order, and the skipped folders.
-
-    The folder is checked again every 15 seconds, so new folders show up
-    without a restart. Unchanged folders are not read again.
+    Order: the "order" number, then the position in the file.
     """
-    with _starred_lock:
-        now = time.monotonic()
-        if not force and now - _starred_cache["at"] < _RESCAN_SECONDS:
-            return _starred_cache["items"], _starred_cache["problems"]
-
-        root = starred_root()
-        seen: dict = {}
-        problems: dict[str, str] = {}
-        ranked = []
+    entries, error = read_starred_entries()
+    problems: dict[str, str] = {}
+    if error:
+        problems[STARRED_FILE] = error
+    ranked, seen = [], set()
+    for index, entry in enumerate(entries):
+        label = _entry_label(entry, index)
         try:
-            names = sorted(os.listdir(root))
-        except OSError:
-            names = []
-        for name in names:
-            folder = os.path.join(root, name)
-            if name.startswith((".", "_")) or not os.path.isdir(folder):
-                continue                 # skip files, drafts (_name) and dotfiles
-            if not _SLUG_RE.match(name):
-                problems[name] = ("folder name must be lower-case letters, digits, "
-                                  "'-' or '_' (max 64)")
-                continue
-            stamp = _folder_stamp(folder)
-            old = _starred_cache["by_slug"].get(name)
-            if old is not None and old[0] == stamp and not force:
-                loaded = old[1]
-            else:
-                try:
-                    loaded = _load_starred(name, folder)
-                except Exception as exc:  # noqa: BLE001
-                    loaded = (None, 0, f"could not be read ({exc})")
-                if loaded[2] and loaded[2] != "hidden":
-                    log.warning("starred/%s: %s", name, loaded[2])
-            seen[name] = (stamp, loaded)
-            item, order, problem = loaded
-            if problem:
-                problems[name] = problem
-            if item is not None:
-                ranked.append((order, item.title.lower(), item))
+            item, problem = _starred_item(db, entry)
+        except Exception as exc:         # noqa: BLE001
+            item, problem = None, f"could not be read ({exc})"
+        if item is not None and item.id in seen:
+            item, problem = None, "the same run is listed twice"
+        if problem:
+            problems[label] = problem
+        if item is not None:
+            seen.add(item.id)
+            order = _number(entry.get("order"), int)
+            ranked.append((order if order is not None else 1000, index, item))
+    ranked.sort(key=lambda t: (t[0], t[1]))
+    return [t[2] for t in ranked], problems
 
-        ranked.sort(key=lambda t: (t[0], t[1]))
-        _starred_cache.update(at=now, items=[t[2] for t in ranked],
-                              problems=problems, by_slug=seen)
-        return _starred_cache["items"], problems
+
+def refresh_run_card(db, project, run_number: int) -> None:
+    """Rebuild a shared run's card numbers. Called after finalize.
+
+    Without this, a relabelled run would keep showing its old species counts.
+    """
+    try:
+        run = (db.query(models.Run)
+               .filter_by(project_id=project.id, number=run_number).first())
+        tier = _tier_of(run.consent) if run else None
+        if tier is None or run.public_at is None:
+            return
+        run.public_summary = build_summary(run_dir(project.id, run_number), tier)
+        db.add(run)
+        db.commit()
+    except Exception:                    # noqa: BLE001
+        log.warning("could not refresh the gallery card of run %s", run_number,
+                    exc_info=True)
+        try:
+            db.rollback()
+        except Exception:                # noqa: BLE001
+            pass
 
 
 def get_item(db, item_id: str) -> Item | None:
-    """Return the item for a public id, or None if it is not shared."""
-    if item_id.startswith(STARRED_PREFIX):
-        return next((i for i in scan_starred()[0] if i.id == item_id), None)
+    """Return the item for a public id (the run's id), or None if not shared."""
     run = db.get(models.Run, item_id)
-    if run is None:
+    if run is None or run.project is None or run.project.state == "DELETING":
         return None
-    if run.project is None or run.project.state == "DELETING":
-        return None
+    for item in scan_starred(db)[0]:
+        if item.id == run.id:
+            return item
     return item_from_run(run)
 
 
@@ -660,19 +685,12 @@ def list_items(db, page: int, per_page: int) -> tuple[list[Item], int]:
 
     Starred items come first, then shared runs, newest first.
     """
-    starred, _ = scan_starred()
-    # A run that is also starred is shown only once, as the starred item.
-    copied = {i.source_run_id for i in starred if i.source_run_id}
-    for pid, number in {i.source_run for i in starred if i.source_run}:
-        row = (db.query(models.Run.id)
-               .filter_by(project_id=pid, number=number).first())
-        if row:
-            copied.add(row[0])
-
+    starred, _ = scan_starred(db)
     query = db.query(models.Run).filter(
         models.Run.consent.in_((1, 2)), models.Run.public_at.isnot(None))
-    if copied:
-        query = query.filter(models.Run.id.notin_(copied))
+    if starred:
+        # A starred run is shown only once, as the starred item.
+        query = query.filter(models.Run.id.notin_([i.id for i in starred]))
     total_runs = query.count()
 
     start = (page - 1) * per_page
