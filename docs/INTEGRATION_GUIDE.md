@@ -1,4 +1,4 @@
-# Tree-Crown Pipeline — Integration Guide
+# Drone Imagery Analysis — Integration Guide
 
 Complete guide covering project architecture, important files, Airflow integration, and API call graph.
 
@@ -23,7 +23,7 @@ Complete guide covering project architecture, important files, Airflow integrati
 
 ## 1. Project Overview
 
-Tree-Crown Pipeline is a FastAPI backend + static frontend that:
+Drone Imagery Analysis is a FastAPI backend + static frontend that:
 - Accepts drone orthomosaic uploads
 - Runs crown detection (Detectree2) + feature extraction (DINOv2) + clustering (KMeans)
 - Lets users label clusters with species names

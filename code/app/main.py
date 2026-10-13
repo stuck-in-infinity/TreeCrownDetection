@@ -51,7 +51,7 @@ async def lifespan(app: FastAPI):
     yield
 
 app = FastAPI(
-    title="Tree-Crown Species Pipeline API",
+    title="Drone Imagery Analysis API",
     version="0.1.0",
     description=(
         "Service around the tree-crown detection, clustering and species-mapping "

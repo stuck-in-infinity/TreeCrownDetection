@@ -1,1 +1,1 @@
-"""Tree-Crown Species Pipeline, FastAPI service package."""
+"""Drone Imagery Analysis, FastAPI service package."""

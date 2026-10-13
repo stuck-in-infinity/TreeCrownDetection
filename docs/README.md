@@ -1,4 +1,4 @@
-# Tree-Crown Docker Deploy
+# Drone Imagery Analysis Docker Deploy
 
 Use the prebuilt Docker Hub images to run the workstation on a machine where
 the model files live outside the repo.

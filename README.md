@@ -1,4 +1,4 @@
-# Tree-Crown Species Pipeline
+# Drone Imagery Analysis
 
 Detect individual tree crowns from a drone orthomosaic, cluster them by
 appearance, label clusters with species, and export a georeferenced **KMZ +
