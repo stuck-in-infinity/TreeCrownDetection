@@ -306,8 +306,6 @@
     .param-card .pc-code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
       font-size:12.5px;color:var(--muted)}
     .param-card .pc-plain{margin:8px 0 0;font-size:14px}
-    .param-card .pc-analogy{margin:6px 0 0;font-size:13px;color:var(--muted);
-      font-style:italic}
     .pc-effects{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
     @media(max-width:560px){.pc-effects{grid-template-columns:1fr}}
     .pc-eff{border-radius:var(--r-sm);padding:8px 10px;font-size:12.5px;line-height:1.4}
@@ -519,16 +517,6 @@
       .guide-table tr:last-child{border-bottom:0}
     }
 
-    /* The "how big does a tree look" calculator. */
-    .gz-box{background:var(--card);border:1px solid var(--line);border-radius:var(--r);
-      padding:14px 16px;margin:0 0 10px}
-    .gz-inputs{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
-    @media(max-width:560px){.gz-inputs{grid-template-columns:1fr}}
-    .gz-out{margin-top:12px;padding-top:11px;border-top:1px solid var(--line);
-      font-size:14px;line-height:1.55}
-    .gz-ok,.gz-warn{margin-top:9px;padding:7px 10px;border-radius:var(--r-sm);font-size:13px}
-    .gz-ok{background:var(--green-l);color:var(--green-d);border:1px solid #cfe0ca}
-    .gz-warn{background:#fdf6e8;color:#6a5220;border:1px solid #ecdcbb}
     .guide-wrap code{background:#f1eee4;border-radius:3px;padding:1px 5px;
       font-size:12.5px}
 
@@ -1490,8 +1478,8 @@
 
       <h2 id="grp-howto">Running a survey, start to finish</h2>
       <p class="guide-lede">
-        Five steps on one page. You can leave every setting at its default the
-        first time — the only decision that really needs you is step 4.
+        Five steps. The default settings are fine for a first run. The one thing
+        you must do yourself is name the groups in step 4.
       </p>
       <div class="howto">
         <div class="ht"><span class="ht-n">1</span><div>
@@ -1503,39 +1491,39 @@
              files take a few minutes.</p></div></div>
         <div class="ht"><span class="ht-n">3</span><div>
           <b>Press Run analysis</b>
-          <p>The tool finds every tree and sorts them into look-alike groups. Expect
-             tens of minutes for a large survey — you can close the tab and come back.</p></div></div>
+          <p>The tool outlines every tree crown and sorts the crowns into groups that
+             look alike. A large survey can take tens of minutes; you can close the
+             tab and come back.</p></div></div>
         <div class="ht"><span class="ht-n">4</span><div>
           <b>Name the groups</b>
-          <p>Open the output files, look at the sample pictures for each group, and
-             type in the species you recognise. This is the part only a person can do.</p></div></div>
+          <p>Look at the sample crowns shown for each group and choose the species
+             you recognise.</p></div></div>
         <div class="ht"><span class="ht-n">5</span><div>
           <b>Finalize and export</b>
           <p>You get a map file you can open in Google Earth or QGIS, with every tree
              outlined and labelled.</p></div></div>
       </div>
       <p class="guide-lede">
-        If something looks wrong afterwards, the table below points you at the
-        setting that controls it. 
+        If the result looks wrong, the table below shows which setting to change.
       </p>
 
-      <h2>What happens inside, in six steps</h2>
+      <h2>What the software does</h2>
       <ol style="font-size:14px;line-height:1.7">
-        <li>Your survey photo is one large image/TIFF</li>
+        <li>Your survey image is one large GeoTIFF.</li>
         <li>It is cut into small squares called <b>tiles</b>, which overlap slightly.</li>
-        <li>The model looks at each tile and draws an outline around every tree it recognises.</li>
-        <li>Outlines from neighbouring tiles are stitched together and duplicates are merged.</li>
-        <li>Each tree outline is converted into a list of numbers describing its colour and texture.</li>
-        <li>Trees with similar numbers are grouped together. Those groups are your candidate species.</li>
+        <li>The model looks at each tile and outlines every tree crown it finds.</li>
+        <li>Outlines from neighbouring tiles are joined and duplicates are removed.</li>
+        <li>Each crown is converted into a list of numbers that describe its colour and texture.</li>
+        <li>Crowns with similar numbers are put in the same group. You then name each group with a species.</li>
       </ol>
       <p class="guide-lede">
-        The settings you can change affect steps 2, 3, 4 and 6. Everything else is fixed.
+        The settings on this page affect points 2, 3, 4 and 6 of this list.
       </p>
 
       <h2 id="grp-symptoms">If your map looks wrong</h2>
       <p class="guide-lede">
-        Start here. Find what you are seeing, then follow the link to the setting
-        that controls it.
+        Find what you see in the first column, then follow the link to the setting
+        to change.
       </p>
       <table class="guide-table">
         <thead><tr><th>What you see</th><th>Usual cause</th><th>Setting to try</th></tr></thead>
@@ -1544,40 +1532,15 @@
 
       <h2 id="grp-zoom">How big does a tree look to the model?</h2>
       <p>
-        This one idea explains three of the settings at once, so it is worth two
-        minutes.
-      </p>
-      <p>
-        Whatever patch of ground you ask for in a tile, it is resized to a fixed
-        picture size before the model looks at it. Think of a passport photo
-        booth: the print is always the same size, so standing further back to fit
-        more in only makes your face smaller in the print.
-      </p>
-      <p>
-        So asking for a <b>bigger tile</b> does not give the model a bigger
-        picture. It gives the same picture with everything in it
-        <b>smaller</b> — and trees that get too small are simply not found.
+        Each tile, together with its buffer, is resized to a fixed picture size
+        before the model sees it. So a <b>bigger tile</b> does not give the model a
+        bigger picture. It gives a picture of the same size with everything in it
+        <b>smaller</b>, and trees that become too small are not detected.
       </p>
       <p class="guide-lede">
-        Try it below. Nothing here changes your run — these boxes are just for
-        experimenting.
-      </p>
-      <div class="gz-box">
-        <div class="gz-inputs">
-          <div><label>Tile size (m)</label>
-            <input id="gz_tile" type="number" min="1" max="1000" value="10" /></div>
-          <div><label>Buffer (m)</label>
-            <input id="gz_buf" type="number" min="0" max="500" value="10" /></div>
-          <div><label>Picture size (px)</label>
-            <input id="gz_size" type="number" min="256" max="2048" value="512" /></div>
-        </div>
-        <div id="gz_out" class="gz-out"></div>
-      </div>
-      <p class="guide-lede">
-        The sum is <code>pixels per metre = picture size ÷ (tile size + 2 × buffer)</code>.
-        Notice that your camera's resolution does not appear in it — a sharper
-        survey does not make trees look bigger to the model. Only these three
-        numbers do.
+        <code>pixels per metre = picture size ÷ (tile size + 2 × buffer)</code>.
+        With the defaults this is 512 ÷ (10 + 2 × 10), about 17 pixels per metre.
+        Three settings control it: tile size, buffer and picture size.
       </p>
 
       <div id="guideCards"></div>
@@ -2022,136 +1985,135 @@ const PARAM_DOCS = {
     title: "Detector model",
     code: "Detectree2 weights",
     hint: "Detectree2 weights used to find crowns. Pick one trained on similar imagery.",
-    plain: "Which trained model does the looking. Each one learned from a different set of aerial photos, so each is good at different scenery.",
+    plain: "The trained Detectree2 model used to find crowns. Each one was trained on different aerial imagery, so choose the one closest to your site.",
     down: null, up: null,
   },
   tile_size: {
     title: "Tile size",
     code: "tile_size · metres · default 10",
     hint: "Detection tile edge (m). Smaller = finer & more tiles, but slower.",
-    plain: "How big a square of ground the model examines in one go, measured in metres on the ground.",
-    down: "Large trees get split across several tiles. The model sees no surroundings to judge size against. Tile count explodes and the run takes far longer.",
-    up:   "Small trees shrink to a handful of pixels and are missed entirely.",
-    meta: "<b>Default 10 m. Commonly better: 30–40 m.</b> Change it when big trees are not getting detected."
+    plain: "The side of the square of ground the model looks at in one go, in metres.",
+    down: "Large trees are split across several tiles. The number of tiles goes up, so the run takes longer.",
+    up:   "Small trees become only a few pixels wide and are missed.",
+    meta: "<b>Default 10 m.</b> Try 20–40 m when large trees are not detected."
   },
   buffer: {
     title: "Buffer",
     code: "buffer · metres · default 10",
     hint: "Tile overlap (m) so crowns on tile edges aren't cut in half.",
-    plain: "Extra ground included around every tile so a tree sitting on a tile boundary still appears whole in at least one tile.",
-    down: "Trees straddling a tile edge get cut in half and may be counted twice or missed.",
-    up:   "More overlapping ground is processed twice, so the run gets slower for no extra coverage."
+    plain: "Extra ground added around every tile, so that a tree on a tile boundary appears whole in at least one tile.",
+    down: "Trees on a tile edge are cut in half and may be counted twice or missed.",
+    up:   "More ground is processed twice, so the run is slower with no gain in coverage."
   },
   iou_threshold: {
     title: "Overlap merge threshold",
     code: "iou_threshold · 0–1 · default 0.9",
     hint: "Merge overlapping crown boxes above this (0–1). Higher = fewer merges.",
-    plain: "How much two outlines must overlap before the app decides they are the same tree and keeps only one.",
-    down: "Distinct but touching trees get merged into one blob.",
-    up:   "The same tree stays outlined two or three times, inflating your count."
+    plain: "How much two outlines must overlap before they are treated as the same tree and only one is kept.",
+    down: "Separate trees that touch each other are merged into one outline.",
+    up:   "The same tree can keep two or three outlines, which raises the count."
   },
   conf_threshold: {
     title: "Confidence threshold",
     code: "conf_threshold · 0–1 · default 0.85",
     hint: "Keep detections above this confidence (0–1). Higher = fewer, surer crowns.",
-    plain: "How certain the model must be before an outline is kept. Every detection carries a score from 0 to 1.",
-    analogy: "A spam filter's strictness. Turn it up and your inbox is clean but real mail goes missing.",
-    down: "More real trees found, but also more bushes, hedges and green rooftops.",
-    up:   "Only obvious, isolated trees survive. Anything partly shaded or overlapping is dropped."
+    plain: "How certain the model must be before an outline is kept. Every detection has a score from 0 to 1.",
+    down: "More real trees are found, but also more bushes, hedges and green rooftops.",
+    up:   "Only clear, well-separated trees are kept. Trees that are partly shaded or overlapping are dropped."
   },
   detections_per_image: {
     title: "Max crowns per tile",
     code: "detections_per_image · default 6 · allowed 1–500",
     hint: "Cap on crowns reported per tile. Extras are dropped without warning.",
-    plain: "The most trees that can be reported from any one tile. If a tile holds more than this, the rest are thrown away silently.",
-    down: "Dense areas are under-counted, and nothing tells you it happened — the map just looks sparse where the trees are thickest.",
-    up:   "Slightly slower, and low-confidence guesses start appearing. Not harmful, but raise the confidence threshold with it.",
-    meta: "<b>Default 6. </b> Six is too low for anything but a very small tile. Raise this first if your map looks emptier than the imagery."
+    plain: "The largest number of crowns reported from one tile. If a tile has more, the extra ones are dropped without any warning.",
+    down: "Dense areas are under-counted, and the map looks sparse where the trees are thickest.",
+    up:   "The run is slightly slower and some low-confidence outlines appear. Raise the confidence threshold along with it.",
+    meta: "<b>Default 6.</b> This is too low for all but very small tiles. Raise it first if the map shows fewer trees than the image."
   },
   area_min: {
     title: "Smallest crown to keep",
     code: "area_min · m² · default 4",
     hint: "Outlines smaller than this are discarded after detection.",
-    plain: "Anything smaller than this is treated as a bush, a shadow or noise rather than a tree.",
-    down: "Shrubs, hedge sections and shadow fragments start appearing as trees.",
-    up:   "Genuine young or small trees are thrown away.",
-    meta: "<b>Default 4 m², about a 2.3 m crown.</b> Raise toward 6–10 m² if small noise is cluttering the map."
+    plain: "Outlines smaller than this are treated as bushes, shadows or noise, and removed.",
+    down: "Shrubs, bits of hedge and shadows show up as trees.",
+    up:   "Young or small trees are removed.",
+    meta: "<b>Default 4 m², a crown about 2.3 m across.</b> Raise it to 6–10 m² if small false detections clutter the map."
   },
   area_max: {
     title: "Largest crown to keep",
     code: "area_max · m² · default 2000",
     hint: "Outlines larger than this are discarded after detection.",
-    plain: "Anything bigger than this is assumed to be a mistake rather than one very large tree.",
-    down: "Real large trees — a mature banyan can exceed 700 m² — get deleted.",
-    up:   "A whole green field or a block of joined canopy can be reported as one enormous tree.",
+    plain: "Outlines larger than this are treated as mistakes, not as one very large tree, and removed.",
+    down: "Real large trees are removed. A mature banyan can be more than 700 m².",
+    up:   "A whole field, or a block of joined canopy, can be reported as one tree.",
   },
   min_size_test: {
     title: "Picture size fed to the model",
     code: "min_size_test · pixels · default 512",
     hint: "Every tile is resized to this before the model sees it. Sets the zoom.",
-    plain: "Whatever ground you asked for in a tile, it is squeezed or stretched to this many pixels before the model looks at it.",
-    down: "Everything in the tile appears smaller, and small trees fall below what the model can recognise.",
-    up:   "Everything appears larger and slower to process. Stretching beyond the original detail invents nothing new.",
+    plain: "Each tile, with its buffer, is resized to this many pixels before the model sees it.",
+    down: "Everything in the tile looks smaller, and small trees become too small to detect.",
+    up:   "Everything looks larger and the run is slower. Enlarging beyond the image's own resolution adds no detail.",
   },
   full_coverage: {
     title: "Include the image edges",
     code: "full_coverage · default off",
     hint: "Also tile the leftover strip along the right and bottom edges.",
-    plain: "Tiles are laid out in a grid, and the grid rarely divides the image exactly. This decides whether the leftover strip is processed too.",
+    plain: "Tiles are laid out in a grid, and the grid rarely fits the image exactly. This setting decides whether the leftover strip along the right and bottom edges is processed too.",
     down: null,
     up:   null,
-    meta: "<b>Off by default, which silently skips a strip along two edges of every survey.</b> Turn it on unless you have a reason not to; the cost is a handful of extra tiles."
+    meta: "<b>Off by default, so a strip along two edges of the survey is skipped.</b> Turn it on unless you have a reason not to. It adds only a few extra tiles."
   },
   backbone: {
     title: "Feature extractor",
     code: "DINOv2 backbone",
     hint: "Vision model that turns each crown into features for clustering. Also fixes the crop size each crown is resized to.",
-    plain: "Turns each detected crown into a list of numbers describing its colour and texture, so crowns can be compared to one another.",
+    plain: "Converts each detected crown into a list of numbers that describe its colour and texture, so that crowns can be compared.",
     down: null, up: null,
-    meta: "It has no effect on which trees are found — only on how they are grouped afterwards. Larger backbones are slower and describe crowns in more detail."
+    meta: "This does not affect which trees are found, only how they are grouped. Larger models are slower and describe crowns in more detail."
   },
   pca_components: {
     title: "PCA components",
     code: "pca_components · default 50",
     hint: "Feature dimensions kept before clustering. Lower = faster, coarser.",
-    plain: "Each crown starts as hundreds of numbers. This compresses them to the most informative few before grouping.",
-    down: "Grouping gets coarse — genuinely different species may land in one cluster.",
-    up:   "Slower, and past a point it adds noise rather than detail. It can never exceed the number of crowns you actually detected.",
+    plain: "Each crown starts as several hundred numbers. PCA reduces them to a smaller set before grouping.",
+    down: "Grouping becomes coarse, and different species may end up in the same group.",
+    up:   "The run is slower, and very high values add noise. The value cannot be more than the number of crowns detected.",
   },
   k_list: {
-    title: "Candidate cluster counts",
+    title: "Group counts to try",
     code: "k_list · comma-separated · default 2,4,6,8,10",
-    hint: "Candidate cluster counts to try. The app recommends one of these to label.",
-    plain: "How many groups to sort the trees into. The app tries every number you list and recommends one, but you make the final call.",
-    down: "Too few groups and distinct species end up sharing a tray.",
-    up:   "Too many and the same species is split across several trays.",
+    hint: "Group counts to try. The app suggests one of these to label.",
+    plain: "How many groups to sort the crowns into. The app tries every number in the list and suggests one; you choose which to use.",
+    down: "With too few groups, different species end up in the same group.",
+    up:   "With too many groups, one species is split across several groups.",
   }
 };
 
 // Guide card groups, in the same order as the form.
 const GUIDE_GROUPS = [
   { title: "Finding the trees",
-    intro: "These decide how many trees are found and how their outlines are drawn.",
+    intro: "These settings decide how many trees are found and how their outlines are drawn.",
     keys: ["model_key","tile_size","buffer","iou_threshold","conf_threshold",
            "detections_per_image","area_min","area_max"] },
   { title: "Advanced",
-    intro: "These change how the picture reaches the model. Worth understanding "
-         + "before touching, but they are also the settings with the biggest effect.",
+    intro: "These settings change how each tile is passed to the model. They have a "
+         + "large effect, so read the section above on tree size before changing them.",
     keys: ["min_size_test","full_coverage"] },
   { title: "Sorting the trees into groups",
-    intro: "These run after every tree has been found. They do not change what "
-         + "was detected — only how the trees are grouped afterwards.",
+    intro: "These settings are used after detection. They do not change which trees "
+         + "were found; they change how the trees are grouped.",
     keys: ["backbone","pca_components","k_list"] }
 ];
 
 // Symptom to parameter lookup.
 const GUIDE_SYMPTOMS = [
-  ["Large trees not being detected or getting croped", "The tile is smaller than the tree", ["tile_size","buffer"]],
-  ["One outline covers several trees",         "Outlines are being merged too eagerly", ["iou_threshold"]],
-  ["The same tree is outlined twice",          "Outlines are not being merged enough", ["iou_threshold"]],
-  ["Far fewer trees than you can see",         "The model is being too cautious, or the per-tile cap is low", ["conf_threshold","detections_per_image"]],
-  ["Dense areas look emptier than sparse ones","The per-tile cap is throwing away the extras", ["detections_per_image"]],
-  ["A field or lawn is marked as one big tree","Nothing is limiting how large an outline may be", ["area_max"]],
+  ["Large trees not detected, or cut off",     "The tile is smaller than the tree", ["tile_size","buffer"]],
+  ["One outline covers several trees",         "Outlines are merged too easily", ["iou_threshold"]],
+  ["The same tree is outlined twice",          "Outlines are not merged enough", ["iou_threshold"]],
+  ["Far fewer trees than you can see",         "The confidence threshold is too high, or the per-tile cap is too low", ["conf_threshold","detections_per_image"]],
+  ["Dense areas look emptier than sparse ones","The per-tile cap is dropping the extra crowns", ["detections_per_image"]],
+  ["A field or lawn is marked as one big tree","The largest allowed outline is too large", ["area_max"]],
   ["Bushes and shadows counted as trees",      "The smallest allowed outline is too small", ["area_min","conf_threshold"]],
   ["Nothing found along the right or bottom edge", "The leftover strip is not being processed", ["full_coverage","buffer"]],
   ["The run takes hours",                      "Too many tiles", ["tile_size"]],
@@ -2179,7 +2141,6 @@ function paramCard(key, d){
     + '<h3>'+esc(d.title)+'</h3>'
     + '<div class="pc-code">'+esc(d.code)+'</div>'
     + '<p class="pc-plain">'+esc(d.plain)+'</p>'
-    + (d.analogy ? '<p class="pc-analogy">'+esc(d.analogy)+'</p>' : '')
     + effects
     + (d.meta ? '<div class="pc-meta">'+d.meta+'</div>' : '')
     + '</div>';
@@ -2217,28 +2178,7 @@ function renderGuide(){
       + keys.map(k => docLink(k)).join(", ") + '</td></tr>').join("");
   }
 
-  updateGuideZoom();
   guideRendered = true;
-}
-
-// The guide's own zoom calculator, using its demo inputs.
-function updateGuideZoom(){
-  const t = $("gz_tile"), b = $("gz_buf"), m = $("gz_size"), out = $("gz_out");
-  if(!t || !out) return;
-  const foot = (+t.value) + 2*(+b.value);
-  const ppm  = (+m.value) / foot;
-  if(!isFinite(ppm) || foot <= 0){ out.textContent = "Enter a tile size first."; return; }
-  const px5 = Math.round(5*ppm), px12 = Math.round(12*ppm);
-  const ok  = px5 >= 40 && px12 <= 400;
-  out.innerHTML =
-      '<div>Each tile covers <b>'+foot+' m</b> of ground.</div>'
-    + '<div>That is <b>'+ppm.toFixed(1)+' pixels for every metre</b>.</div>'
-    + '<div style="margin-top:6px">A <b>5 m</b> tree reaches the model as about <b>'+px5+' pixels</b>.</div>'
-    + '<div>A <b>12 m</b> tree reaches it as about <b>'+px12+' pixels</b>.</div>'
-    + '<div class="'+(ok?"gz-ok":"gz-warn")+'">'
-    + (ok ? "Good — that is the size range these models learned on."
-          : "Outside the 100–300 pixel range these models learned on. Trees this size may be missed.")
-    + '</div>';
 }
 
 // Hash router: "#/guide" shows the guide, anything else the app.
@@ -4039,11 +3979,6 @@ window.addEventListener("load", ()=>{
     const el = $(id); if(el) el.addEventListener("input", validateParams);
   });
   validateParams();
-
-  // The guide's standalone calculator.
-  ["gz_tile","gz_buf","gz_size"].forEach(id => {
-    const el = $(id); if(el) el.addEventListener("input", updateGuideZoom);
-  });
 
   if(AUTH_CONFIGURED){
     initGis();                         // gate stays visible until sign-in
