@@ -3799,8 +3799,7 @@ async function submitConsent(){
   }catch(e){ const m=$("consentMsg"); if(m) m.innerHTML='<span class="err">'+esc(e.message)+'</span>'; }
 }
 
-// A run listed in the public gallery, with the owner's Unpublish button.
-// Empty when the run is not listed.
+// "Listed in gallery" line with an Unpublish button. Empty if not public.
 function sharedLineHtml(publicId, run){
   if(!publicId || run==null) return "";
   return `<div class="shared-line" data-run="${escAttr(run)}" style="margin-top:12px">
@@ -3810,8 +3809,7 @@ function sharedLineHtml(publicId, run){
   </div>`;
 }
 
-// Removes the run from the public gallery (consent 0). The server allows this
-// only for the project's owner. Files links already handed out keep working.
+// Unpublish = consent 0. Owner-only (checked on the server).
 async function unpublishRun(btn){
   const line=btn.closest(".shared-line"); const run=line && line.dataset.run;
   if(!PID || !run) return;
