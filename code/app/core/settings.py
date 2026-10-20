@@ -165,13 +165,22 @@ class Settings(BaseSettings):
     # publicly routable. Goes back to False once Airflow sends a JWT.
     trust_unauthenticated_callbacks: bool = False
 
-    # Google sign-in, used for audit and ownership only. With auth_enabled True,
-    # the human endpoints require an ``X-User-Email`` header, which the frontend
-    # sets after sign-in. The backend does not verify the Google token, so this
-    # is only safe behind a gateway or on an internal network. google_client_id
-    # is the public client id sent to the page.
+    # Google sign-in. When enabled, users need a session cookie, issued after
+    # the server verifies the Google token. When disabled, the X-User-Email
+    # header is trusted (development only). The client id is public.
     auth_enabled: bool = False
     google_client_id: str | None = None
+    # Allowed accounts, comma-separated. Both blank: any verified account.
+    auth_allowed_domains: str = ""        # e.g. "gmail.com,iitd.ac.in"
+    auth_allowed_emails: str = ""
+    # Session length in hours, counted from last use.
+    session_ttl_hours: int = 168
+    # Session cookie. cookie_secure=False only for http://localhost.
+    # samesite "none" only if the UI is on another site (needs secure).
+    # On a shared host, set cookie_path to the app's prefix.
+    cookie_secure: bool = True
+    cookie_samesite: str = "lax"
+    cookie_path: str = "/"
 
     # FileBrowser (optional). When set, each project folder gets a public share
     # at creation time, and the share URL comes back in the analyze and finalize

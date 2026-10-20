@@ -1,7 +1,9 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
+from app.api.deps import require_app_request
 from app.api.v1 import (
     analyze,
+    auth,
     clustering,
     compute,
     finalize,
@@ -13,9 +15,11 @@ from app.api.v1 import (
     runs,
 )
 
-api_router = APIRouter(prefix="/api/v1")
+# CSRF check on every route (no-op with sign-in off).
+api_router = APIRouter(prefix="/api/v1", dependencies=[Depends(require_app_request)])
 # Health goes first on purpose: it is what everything else is diagnosed with.
 api_router.include_router(health.router, tags=["meta"])
+api_router.include_router(auth.router, tags=["auth"])
 api_router.include_router(projects.router, tags=["projects"])
 api_router.include_router(runs.router, tags=["runs"])
 api_router.include_router(analyze.router, tags=["analyze"])

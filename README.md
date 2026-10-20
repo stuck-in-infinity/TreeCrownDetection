@@ -247,21 +247,36 @@ After Finalize: KMZ and CSV downloads, the distribution summary, and the
 
 ## 5. Google sign-in (SSO)
 
-Client-side Google Identity Services (GIS) token flow. The frontend signs the
-user in and sends their identity with every API call; the backend records **who
-triggered what** and scopes projects per user.
+With `TCP_AUTH_ENABLED=true` the server checks every sign-in with Google itself
+and keeps the user signed in with an HttpOnly session cookie. Each user sees
+only their own projects, and the activity log records verified identities.
+Full operator guide: [docs/GOOGLE_SIGN_IN.md](docs/GOOGLE_SIGN_IN.md).
 
 Setup:
 1. Google Cloud Console → **OAuth Client ID** (type: Web application).
    **Authorized JavaScript origins** = your site origin (scheme+host, **no path**),
    e.g. `https://your-site.example`. Leave **redirect URIs** empty.
-2. Configure the OAuth consent screen (Internal if Workspace-only).
-3. Put the client ID in `.env` as `TCP_GOOGLE_CLIENT_ID`.
-4. Set `TCP_AUTH_ENABLED=true` and restart. Set both together — sign-in is only
-   complete when the client id and `TCP_AUTH_ENABLED` are both configured.
+2. OAuth consent screen: scopes `openid` and `email`, then **Publish** (in
+   "Testing" only listed test users can sign in).
+3. In `.env`: `TCP_GOOGLE_CLIENT_ID=…apps.googleusercontent.com` and
+   `TCP_AUTH_ENABLED=true`. Optionally limit who may sign in with
+   `TCP_AUTH_ALLOWED_DOMAINS` / `TCP_AUTH_ALLOWED_EMAILS`.
+4. Postgres only: `docker compose run --rm api alembic upgrade head`.
+5. Restart the API. It refuses to start if the client id is missing.
+6. Projects made while sign-in was off belong to `default`; move them:
+   `docker compose exec api python scripts/reassign_owner.py --from default --to you@gmail.com --apply`
+   (leave out `--apply` for a dry run).
 
-Deploy behind HTTPS (a reverse proxy in front of the one container). The
-callback routes share the port with the UI, so protect them with
+The server needs outbound https to `oauth2.googleapis.com`; behind a proxy, set
+`HTTPS_PROXY` for the API container. Serve the site over HTTPS (the cookie is
+`Secure`). If the host is shared with other apps, give this one its own
+subdomain, or at least set `TCP_COOKIE_PATH` to its path prefix.
+
+With `TCP_AUTH_ENABLED=false` and a client id, the page still signs in but the
+server trusts the email the page sends, unverified. Use that for development
+only. Rollback: set it back to `false` and restart.
+
+The callback routes share the port with the UI, so protect them with
 `TCP_COMPUTE_TOKEN` (§6) rather than by network placement, and never set
 `TCP_TRUST_UNAUTHENTICATED_CALLBACKS=true` while that port is reachable by
 users.
@@ -639,12 +654,16 @@ is invisible to Postgres afterwards and there is no merge. Set the flag to
   The failure message names the URL it tried.
 - **Mixed content blocked** → the page is on HTTPS and `TCP_FRONTEND_API_BASE` is HTTP.
   Browsers refuse this. Put both behind the same HTTPS origin.
-- **API 401 everywhere** → `TCP_AUTH_ENABLED=true` but no signed-in identity is
-  being sent (client id not set, or a non-browser client). Set the client id, or
-  turn auth off for local use.
-- **Sign-in popup rejected** → the browser origin is not in the OAuth client's
-  Authorized JavaScript origins, or the consent screen is unpublished and you
-  are not a test user.
+- **Sign-in popup error `origin_mismatch`** → the browser origin is not in the
+  OAuth client's Authorized JavaScript origins, or the consent screen is
+  unpublished and you are not a test user.
+- **Signed in, then straight back to the sign-in screen** → the session cookie
+  is not coming back: plain http with `TCP_COOKIE_SECURE=true`, or a UI on
+  another origin that is not in `TCP_CORS_ORIGINS`. See docs/GOOGLE_SIGN_IN.md.
+- **"The server could not reach Google"** (503) → the API container has no
+  outbound https to `oauth2.googleapis.com`; set `HTTPS_PROXY`.
+- **Old projects missing after turning sign-in on** → they belong to
+  `default`; run `scripts/reassign_owner.py` (§5).
 
 **Running a pipeline**
 
@@ -708,3 +727,8 @@ together.
   pushes the images.
 - `project_outline.md` — architecture with diagrams.
 - `version_1.0.md`, `version_1.2.md` — release changelogs.
+
+## License
+GNU Affero General Public License v3.0. See [LICENSE](LICENSE). If you run a
+modified version as a network service, you must offer its users the source of
+that version (AGPL §13).

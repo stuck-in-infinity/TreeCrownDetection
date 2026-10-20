@@ -4,9 +4,9 @@ Follows the same ``activity-YYYY-MM-DD.jsonl`` pattern the other team uses: one
 JSON object per line, one file per day, appended under
 ``<storage_root>/activity/``.
 
-This is for auditing only. The identity comes from the ``X-User-Email`` and
-``X-User-Id`` headers the frontend sets after Google sign-in, and the backend
-does not verify the token. Writing is best effort and never raises into the
+This is for auditing only. With sign-in on, the identity is the verified
+session user. With it off, it comes from the unverified ``X-User-Email`` /
+``X-User-Id`` headers. Writing is best effort and never raises into the
 request.
 """
 import json

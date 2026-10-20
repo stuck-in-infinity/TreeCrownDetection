@@ -17,6 +17,7 @@ from datetime import datetime
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     DateTime,
     Float,
     ForeignKey,
@@ -25,6 +26,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    false,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -233,3 +235,30 @@ class ClusterLabel(Base):
 
     project: Mapped["Project"] = relationship(back_populates="labels")
     run: Mapped["Run | None"] = relationship(back_populates="labels")
+
+class User(Base):
+    """A Google account that has signed in. Projects are still owned by email."""
+    __tablename__ = "users"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    #: Google's stable account id.
+    google_sub: Mapped[str] = mapped_column(String, unique=True, index=True)
+    #: Lower-cased.
+    email: Mapped[str] = mapped_column(String, index=True)
+    #: Blocks all sessions of this account.
+    disabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=naive_now)
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+class AuthSession(Base):
+    """A signed-in browser. Stores only the SHA-256 of the cookie."""
+    __tablename__ = "auth_sessions"
+
+    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=naive_now)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+
+    user: Mapped["User"] = relationship()
