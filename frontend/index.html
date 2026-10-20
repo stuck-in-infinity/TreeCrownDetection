@@ -3678,6 +3678,7 @@ async function finalize(){
     // Consent box: only when finalize produced results AND consent not yet given.
     const finalized = (r.state==="COMPLETED") && !!(d && d.kmz);
     if(finalized && !r.consent_at) html+=consentBoxHtml(r.consent||0, runNo, pr.name);
+    else html+=sharedLineHtml(r.public_id, runNo);
     $("results").innerHTML=html; log("finalize done"); refreshProject();
   }catch(e){ $("results").innerHTML='<span class="err">'+e.message+'</span>'; log("finalize failed: "+e.message); }
   finally{ $("btnFinal").disabled=false; $("fprog").style.display="none"; }
@@ -3710,6 +3711,7 @@ async function showRunResults(n, entry){
     // Ask for consent if this finalized run has no answer yet.
     if(r.state==="COMPLETED" && (r.downloads||{}).kmz && !r.consent_at)
       html+=consentBoxHtml(r.consent||0, n, r.project_name);
+    else html+=sharedLineHtml(r.public_id, n);
     box.innerHTML=html;
   }catch(e){ box.innerHTML=""; }
 }
@@ -3763,6 +3765,12 @@ function consentBoxHtml(current, run, name){
       <a href="#/gallery" target="_blank" rel="noopener">public gallery</a>. Your name and
       email are never shown. This answer covers this run only.
     </p>
+    <p class="muted" style="margin:6px 0 0">
+      <b>Withdrawal.</b> You may unpublish this run at any time. Unpublishing removes
+      it from the public gallery only. It does not revoke access already granted:
+      anyone who holds the files link retains access, and data already shared may
+      continue to be used.
+    </p>
     <button id="consentBtn" onclick="submitConsent()" style="margin-top:8px">Save consent</button>
     <span id="consentMsg" class="muted" style="margin-left:8px"></span>
   </div>`;
@@ -3784,13 +3792,44 @@ async function submitConsent(){
     if(box){
       const note=document.createElement("div");
       note.className="muted"; note.style.marginTop="12px";
-      note.innerHTML = r.public_id
-        ? 'Consent saved. This run is now in the <a href="#/gallery/'+escAttr(r.public_id)+'">public gallery</a>.'
-        : 'Consent saved.';
+      note.innerHTML = r.public_id ? sharedLineHtml(r.public_id, r.run) : 'Consent saved.';
       box.replaceWith(note);
     }
     log("consent saved: "+consent);
   }catch(e){ const m=$("consentMsg"); if(m) m.innerHTML='<span class="err">'+esc(e.message)+'</span>'; }
+}
+
+// A run listed in the public gallery, with the owner's Unpublish button.
+// Empty when the run is not listed.
+function sharedLineHtml(publicId, run){
+  if(!publicId || run==null) return "";
+  return `<div class="shared-line" data-run="${escAttr(run)}" style="margin-top:12px">
+    This run is listed in the <a href="#/gallery/${escAttr(publicId)}">public gallery</a>.
+    <button class="ghost" style="margin-left:8px" onclick="unpublishRun(this)">Unpublish</button>
+    <span class="muted" style="margin-left:8px"></span>
+  </div>`;
+}
+
+// Removes the run from the public gallery (consent 0). The server allows this
+// only for the project's owner. Files links already handed out keep working.
+async function unpublishRun(btn){
+  const line=btn.closest(".shared-line"); const run=line && line.dataset.run;
+  if(!PID || !run) return;
+  if(!confirm("Unpublish run "+run+"?\n\nIt will be removed from the public gallery. "+
+      "Anyone who already holds the files link retains access, and data already "+
+      "shared may continue to be used.")) return;
+  btn.disabled=true;
+  try{
+    await api(withPid("/api/v1/project/runs/"+encodeURIComponent(run)+"/consent"),
+              {method:"POST",headers:{"Content-Type":"application/json"},
+               body:JSON.stringify({consent:0})});
+    line.className="muted";
+    line.textContent="Run "+run+" has been removed from the public gallery.";
+    log("run "+run+" unpublished");
+  }catch(e){
+    btn.disabled=false;
+    line.querySelector("span").innerHTML='<span class="err">'+esc(e.message)+'</span>';
+  }
 }
 
 // Landing: the user's past runs and their FileBrowser links.
