@@ -319,6 +319,8 @@ def _run_consent(db, project, run: int) -> dict:
     return {
         "consent": (row.consent or 0) if row else 0,
         "consent_at": row.consent_at.isoformat() if row and row.consent_at else None,
+        # Gallery id if the run is public, else None.
+        "public_id": row.id if row and row.public_at is not None else None,
         "state": row.state if row else None,
     }
 

@@ -564,6 +564,9 @@ def _starred_item(db, entry: dict) -> tuple[Item | None, str | None]:
     run = _find_starred_run(db, entry)
     if run is None or run.project is None:
         return None, 'run not found (give "project_id" and "run", or "run_id")'
+    # Owner said no or unpublished: hide it even if starred.
+    if run.consent_at is not None and not run.consent:
+        return None, "the owner unpublished it"
     base = run_dir(run.project_id, run.number)
     if find(base, "overlay") is None:
         return None, "the run has no detection overlay"
