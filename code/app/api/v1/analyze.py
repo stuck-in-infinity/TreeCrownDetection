@@ -93,6 +93,29 @@ def _run_handed_off(request: Request, body: AnalyzeTrigger, project, db: Session
     return handler(request, req, db=db, _svc="system", idempotency_key=idempotency_key)
 
 
+def _drone_run_info(db: Session, user: str, body: AnalyzeTrigger) -> dict | None:
+    """Project name, email and analyze params, stored in Airflow only. None on any error."""
+    import json
+
+    from app.db import models
+
+    try:
+        project = db.get(models.Project, body.project_id)
+        if project is None or project.user_id != user:
+            return None
+        info = {"project_name": project.name, "email": user}
+        if body.action == "analyze":
+            params = dict(project.params or {})
+            params.update(body.params or {})
+            info["params"] = params
+            info["model_key"] = body.model_key or project.model_key
+            info["source_epsg"] = body.source_epsg or project.source_epsg
+        return json.loads(json.dumps(info, default=str))
+    except Exception:
+        log.warning("drone_run_info skipped", exc_info=True)
+        return None
+
+
 @router.post("/project/drone_api")
 def drone_api(
     request: Request,
@@ -156,6 +179,10 @@ def drone_api(
             _pin_run_ortho(project, selected)
             db.add(project)
             db.commit()
+
+        info = _drone_run_info(db, user, body)
+        if info:
+            conf["drone_run_info"] = info
 
         try:
             dag_run_id = trigger_drone_dag(conf)
