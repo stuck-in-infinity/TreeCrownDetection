@@ -144,7 +144,7 @@ def drone_api(
         })
 
     if not body.execution_id:
-        user = signed_in(x_user_email, x_api_key)
+        user = signed_in(request, x_user_email, x_api_key)
         service = False
 
     # Hand the work to Airflow when it is configured. An execution_id in the

@@ -16,13 +16,14 @@ from app.api.v1.router import api_router
 from app.core.errors import install_error_handlers
 from app.core.logging import configure_logging, get_logger, new_request_id, with_context
 from app.db.session import init_db
-from app.services import activity_log
+from app.services import activity_log, auth
 
 log = get_logger("app.request")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     configure_logging()  # set up logging before anything else runs
+    auth.check_config()  # fail fast on bad sign-in config
     init_db()            # convenient in development; production uses Alembic
 
     # Release runs that a restart killed. A project left in ANALYZING has no way
@@ -64,13 +65,12 @@ app = FastAPI(
 # Give every error the same response shape.
 install_error_handlers(app)
 
-# CORS. `allow_origins=["*"]` cannot be used together with
-# `allow_credentials=True`, and this API authenticates through headers, so
-# credentials are not needed.
+# CORS. Cookies (allow_credentials) only for an explicit origin list, never "*".
 _cors = [o.strip() for o in (settings.cors_origins or "*").split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors or ["*"],
+    allow_credentials=bool(_cors) and "*" not in _cors,
     allow_methods=["*"],
     allow_headers=["*"],
     # Without this, a browser cannot read X-Request-Id on a cross-origin reply.
@@ -106,7 +106,10 @@ def _should_audit(method: str, path: str) -> bool:
 def _caller_identity(request: Request) -> tuple[str | None, str | None]:
     """The signed-in email and user id behind this request, if any.
 
-    The header is what the frontend's fetch() calls send. The ``?user=``
+    With sign-in on, this is the session user and headers are ignored. Only
+    /api/ paths are checked, so static files skip the DB lookup.
+
+    With sign-in off, the header is what the frontend's fetch() calls send. The ``?user=``
     fallback matters just as much here: a download link and a crown image are
     fetched by the browser itself through <a href> and <img src>, which carry no
     custom headers, so those requests name the caller in the query string
@@ -114,6 +117,14 @@ def _caller_identity(request: Request) -> tuple[str | None, str | None]:
     download and every crown image as anonymous, which is most of what the
     ledger is for.
     """
+    if settings.auth_enabled:
+        if not request.url.path.startswith("/api/"):
+            return None, None
+        try:
+            who = auth.identify(request)
+        except Exception:
+            return None, None
+        return (who[0], who[1]) if who else (None, None)
     email = request.headers.get("X-User-Email") or request.query_params.get("user")
     return email, request.headers.get("X-User-Id")
 
@@ -149,6 +160,11 @@ async def audit_requests(request: Request, call_next):
     latency_ms = int((time.monotonic() - started) * 1000)
 
     path = request.url.path
+    # Re-send the cookie if the session expiry was extended.
+    refreshed = getattr(request.state, "auth_refresh", None)
+    if refreshed:
+        auth.set_cookie(response, refreshed)
+
     # Return the id only on /api/ paths that Airflow does not call, so its
     # responses keep exactly the shape the DAGs expect.
     if path.startswith("/api/") and not is_callback_path(path):

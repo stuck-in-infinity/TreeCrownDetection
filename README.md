@@ -82,7 +82,7 @@ Other settings worth knowing (all documented inline in `.env.example`):
 | `TCP_THUMBS_PER_CLUSTER` | Crowns per cluster given a thumbnail during analysis (default 5). `0` renders them on demand instead. |
 | `TCP_AIRFLOW_BASE_URL` | Blank runs the pipeline in this process. **`.env.example` ships this set, so a fresh copy has Airflow ON** — blank it unless you have read §6. |
 | `TCP_ANALYZE_DAG_ID`, `TCP_FINALIZE_DAG_ID`, `TCP_DRONE_DAG_ID` | Which DAG each trigger starts (§6b). |
-| `TCP_DB_NAME`, `TCP_DB_USER`, `TCP_DB_PASSWORD`, `TCP_DB_HOST`, `TCP_DB_PORT` | Postgres by parts (needs `--profile postgres`); the backend composes the URL and encodes the password. First three names match the other production backend. Ignored when `TCP_DATABASE_URL` is set. |
+| `TCP_DB_NAME`, `TCP_DB_USER`, `TCP_DB_PASSWORD`, `TCP_DB_HOST`, `TCP_DB_PORT` | Postgres by parts; the backend composes the URL and encodes the password. `docker-compose.hub.yml` requires `TCP_DB_HOST`. First three names match the other production backend. Ignored when `TCP_DATABASE_URL` is set. |
 | `TCP_DB_FALLBACK_SQLITE` | Come up on SQLite when Postgres is unreachable at boot instead of crash-looping (default on). Serves different data — see §6h. Check `/readyz`. |
 | `TCP_ANALYZE_TIMEOUT_MIN`, `TCP_FINALIZE_TIMEOUT_MIN` | Minutes a run may take (default 10). Each run has its own process which **stops itself** at the limit and is recorded as `RUN_TIMEOUT`. `0`, or `TCP_RUN_TIMEOUT_ENABLED=false`, removes the limit. Read the warning in `.env.example` first — 10 minutes will kill healthy runs on a large survey. |
 | `TCP_COMPUTE_TOKEN` | Shared secret on the `/compute/*` callbacks; must equal `DRONE_SERVICE_TOKEN` on the Airflow worker (§6). |
@@ -168,20 +168,48 @@ what matters is the `"available"` flag on each entry. All `false` means
 On first boot the API creates the SQLite database and its tables under `data/`,
 so nothing else needs preparing.
 
-**Postgres** is opt-in and takes three steps:
+**`docker-compose.hub.yml` needs `TCP_DB_HOST` in `.env`**, or every compose
+command on that file stops with an error. To stay on SQLite with this file, set
+it to any value and leave `TCP_DB_NAME` unset; the host is then ignored.
+
+**Postgres on a server** uses an existing database. The hub file has no `db`
+service and needs no compose profile:
+
+```bash
+# 1. set these in .env
+#    TCP_DB_NAME, TCP_DB_USER, TCP_DB_PASSWORD
+#    TCP_DB_HOST=<IP of the Postgres server>
+#    TCP_DB_PORT=5432
+#    TCP_DB_FALLBACK_SQLITE=false
+#    Remove TCP_DATABASE_URL or leave it at the SQLite default: any other
+#    value overrides the parts above.
+# 2. create the schema — the API will NOT do this for you on Postgres
+docker compose -f docker-compose.hub.yml run --rm api alembic upgrade head
+# 3. start, then check /readyz says "database": "postgres", "degraded": false
+docker compose -f docker-compose.hub.yml up -d
+curl http://localhost:8200/readyz
+```
+
+If the server requires SSL, put a full URL in `.env` instead of the name, user
+and password: `TCP_DATABASE_URL=postgresql://user:pass@host:5432/db?sslmode=require`,
+with special characters in the password percent-encoded. `TCP_DB_HOST` is still
+required by the hub file. If Postgres runs on the same machine as the container,
+use `host.docker.internal` as the host.
+
+**Postgres in a local container** uses the `docker-compose.yml` profile:
 
 ```bash
 # 1. set TCP_DB_NAME / TCP_DB_USER / TCP_DB_PASSWORD in .env
 # 2. start the database (it lives behind a compose profile, so a plain
 #    `docker compose up` stays on SQLite exactly as before)
 docker compose --profile postgres up -d db
-# 3. create the schema — the API will NOT do this for you on Postgres
+# 3. create the schema
 docker compose run --rm api alembic upgrade head
 docker compose --profile postgres up -d
 ```
 
-Leave the profile off and everything behaves as it always has. The API logs a
-warning if it finds a Postgres database that has never been migrated.
+The API logs a warning if it finds a Postgres database that has never been
+migrated.
 
 ### e. What is switched on by default
 
@@ -247,21 +275,36 @@ After Finalize: KMZ and CSV downloads, the distribution summary, and the
 
 ## 5. Google sign-in (SSO)
 
-Client-side Google Identity Services (GIS) token flow. The frontend signs the
-user in and sends their identity with every API call; the backend records **who
-triggered what** and scopes projects per user.
+With `TCP_AUTH_ENABLED=true` the server checks every sign-in with Google itself
+and keeps the user signed in with an HttpOnly session cookie. Each user sees
+only their own projects, and the activity log records verified identities.
+Full operator guide: [docs/GOOGLE_SIGN_IN.md](docs/GOOGLE_SIGN_IN.md).
 
 Setup:
 1. Google Cloud Console → **OAuth Client ID** (type: Web application).
    **Authorized JavaScript origins** = your site origin (scheme+host, **no path**),
    e.g. `https://your-site.example`. Leave **redirect URIs** empty.
-2. Configure the OAuth consent screen (Internal if Workspace-only).
-3. Put the client ID in `.env` as `TCP_GOOGLE_CLIENT_ID`.
-4. Set `TCP_AUTH_ENABLED=true` and restart. Set both together — sign-in is only
-   complete when the client id and `TCP_AUTH_ENABLED` are both configured.
+2. OAuth consent screen: scopes `openid` and `email`, then **Publish** (in
+   "Testing" only listed test users can sign in).
+3. In `.env`: `TCP_GOOGLE_CLIENT_ID=…apps.googleusercontent.com` and
+   `TCP_AUTH_ENABLED=true`. Optionally limit who may sign in with
+   `TCP_AUTH_ALLOWED_DOMAINS` / `TCP_AUTH_ALLOWED_EMAILS`.
+4. Postgres only: `docker compose run --rm api alembic upgrade head`.
+5. Restart the API. It refuses to start if the client id is missing.
+6. Projects made while sign-in was off belong to `default`; move them:
+   `docker compose exec api python scripts/reassign_owner.py --from default --to you@gmail.com --apply`
+   (leave out `--apply` for a dry run).
 
-Deploy behind HTTPS (a reverse proxy in front of the one container). The
-callback routes share the port with the UI, so protect them with
+The server needs outbound https to `oauth2.googleapis.com`; behind a proxy, set
+`HTTPS_PROXY` for the API container. Serve the site over HTTPS (the cookie is
+`Secure`). If the host is shared with other apps, give this one its own
+subdomain, or at least set `TCP_COOKIE_PATH` to its path prefix.
+
+With `TCP_AUTH_ENABLED=false` and a client id, the page still signs in but the
+server trusts the email the page sends, unverified. Use that for development
+only. Rollback: set it back to `false` and restart.
+
+The callback routes share the port with the UI, so protect them with
 `TCP_COMPUTE_TOKEN` (§6) rather than by network placement, and never set
 `TCP_TRUST_UNAUTHENTICATED_CALLBACKS=true` while that port is reachable by
 users.
@@ -584,7 +627,8 @@ Update images: docker compose -f docker-compose.hub.yml pull && \
                docker compose -f docker-compose.hub.yml up -d
 ```
 Data (projects, outputs) persists in `data/` across restarts. On Postgres the
-database lives in the `pgdata` named volume instead, not under `data/`.
+database lives on the Postgres server, or in the `pgdata` named volume with the
+local profile, not under `data/`.
 
 **On SQLite, schema changes apply themselves at boot**, so upgrading is just
 `pull` + `up -d`: `init_db()` creates any missing table (including `runs`) and
@@ -601,8 +645,8 @@ to stop the service booting: projects that predate the `runs` table get a row
 per run they have had, and any run left mid-flight by a restart is released so
 it can be re-run.
 
-**Backups.** On Postgres:
-`docker compose exec -T db pg_dump -U treecrown -Fc treecrown > backup-$(date +%F).dump`.
+**Backups.** An external Postgres is backed up on its own server. With the local
+profile: `docker compose exec -T db pg_dump -U treecrown -Fc treecrown > backup-$(date +%F).dump`.
 On SQLite the database uses WAL, so `data/treecrown.db` is nearly empty on its
 own and the live contents sit in `treecrown.db-wal` — **copy all three of
 `treecrown.db`, `-wal` and `-shm` together**, or the backup will look blank.
@@ -639,12 +683,16 @@ is invisible to Postgres afterwards and there is no merge. Set the flag to
   The failure message names the URL it tried.
 - **Mixed content blocked** → the page is on HTTPS and `TCP_FRONTEND_API_BASE` is HTTP.
   Browsers refuse this. Put both behind the same HTTPS origin.
-- **API 401 everywhere** → `TCP_AUTH_ENABLED=true` but no signed-in identity is
-  being sent (client id not set, or a non-browser client). Set the client id, or
-  turn auth off for local use.
-- **Sign-in popup rejected** → the browser origin is not in the OAuth client's
-  Authorized JavaScript origins, or the consent screen is unpublished and you
-  are not a test user.
+- **Sign-in popup error `origin_mismatch`** → the browser origin is not in the
+  OAuth client's Authorized JavaScript origins, or the consent screen is
+  unpublished and you are not a test user.
+- **Signed in, then straight back to the sign-in screen** → the session cookie
+  is not coming back: plain http with `TCP_COOKIE_SECURE=true`, or a UI on
+  another origin that is not in `TCP_CORS_ORIGINS`. See docs/GOOGLE_SIGN_IN.md.
+- **"The server could not reach Google"** (503) → the API container has no
+  outbound https to `oauth2.googleapis.com`; set `HTTPS_PROXY`.
+- **Old projects missing after turning sign-in on** → they belong to
+  `default`; run `scripts/reassign_owner.py` (§5).
 
 **Running a pipeline**
 
@@ -708,3 +756,8 @@ together.
   pushes the images.
 - `project_outline.md` — architecture with diagrams.
 - `version_1.0.md`, `version_1.2.md` — release changelogs.
+
+## License
+GNU Affero General Public License v3.0. See [LICENSE](LICENSE). If you run a
+modified version as a network service, you must offer its users the source of
+that version (AGPL §13).

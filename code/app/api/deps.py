@@ -5,10 +5,43 @@ from app.api.callbacks import is_service_callback_path
 from app.core.settings import settings
 from app.db import models
 from app.db.session import get_db
+from app.services import auth
 
 # Identities that name no person: require_api_key's fallbacks and the string
 # the ledger writes for an unattributed call. Never recorded as an owner.
 _PLACEHOLDER_IDENTITIES = {"", "default", "system", "anonymous"}
+
+_SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
+
+def require_app_request(request: Request) -> None:
+    """CSRF check: writes that carry the session cookie need X-Requested-With.
+
+    Another site can't add this header without a CORS preflight, which only
+    passes for TCP_CORS_ORIGINS. GETs are exempt (img and download links).
+    Also applies to /auth/* writes. Does nothing with sign-in off.
+    """
+    if not settings.auth_enabled or request.method in _SAFE_METHODS:
+        return
+    if (auth.COOKIE_NAME not in request.cookies
+            and not request.url.path.startswith("/api/v1/auth/")):
+        return
+    if not request.headers.get("X-Requested-With"):
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "CSRF_REJECTED",
+                    "message": "This request did not come from the app's page.",
+                    "hint": "send the X-Requested-With header"},
+        )
+
+def session_email(request: Request) -> str:
+    """Email of the signed-in user, or 401."""
+    who = auth.identify(request)
+    if not who:
+        raise HTTPException(
+            status_code=401,
+            detail={"code": "UNAUTHENTICATED", "message": "Google sign-in required"},
+        )
+    return who[0]
 
 def service_caller(
     request: Request,
@@ -27,11 +60,14 @@ def service_caller(
        the setting's comment before turning it on.
 
     A verified JWT would become a third branch. This is the only place that
-    decides who the orchestrator is.
+    decides who the orchestrator is. A request with a valid session is never
+    the orchestrator.
     """
     if settings.compute_token and x_service_token == settings.compute_token:
         return True
     if settings.trust_unauthenticated_callbacks and is_service_callback_path(request.url.path):
+        if settings.auth_enabled and auth.identify(request):
+            return False
         # /projects/{id}/analyze is reachable by both, so without this the flag
         # would skip the ownership check for signed-in users too.
         named_user = x_user_email or request.query_params.get("user")
@@ -60,6 +96,7 @@ def attribute_to_owner(request: Request | None, project) -> None:
         pass
 
 def require_api_key(
+    request: Request,
     x_api_key: str | None = Header(default=None),
     x_user_email: str | None = Header(default=None, alias="X-User-Email"),
     service: bool = Depends(service_caller),
@@ -68,8 +105,8 @@ def require_api_key(
 
     There are two checks, and both are optional:
     - if ``settings.api_key`` is set, the ``X-API-Key`` header must match it;
-    - if ``settings.auth_enabled`` is True, the ``X-User-Email`` header the
-      frontend sets after Google sign-in must be present.
+    - if ``settings.auth_enabled`` is True, a valid session is required and
+      ``X-User-Email`` is ignored.
 
     Returns the signed-in email, or ``"default"``, so the result also serves as
     the user id stored in ``Project.user_id``. This does the same thing as
@@ -84,38 +121,33 @@ def require_api_key(
             status_code=401,
             detail={"code": "UNAUTHENTICATED", "message": "Invalid or missing API key"},
         )
-    if settings.auth_enabled and not x_user_email:
-        raise HTTPException(
-            status_code=401,
-            detail={"code": "UNAUTHENTICATED", "message": "Google sign-in required"},
-        )
+    if settings.auth_enabled:
+        return session_email(request)
     return x_user_email or "default"
 
-def signed_in(x_user_email: str | None, x_api_key: str | None = None) -> str:
+def signed_in(request: Request, x_user_email: str | None,
+              x_api_key: str | None = None) -> str:
     if settings.api_key and x_api_key != settings.api_key:
         raise HTTPException(
             status_code=401,
             detail={"code": "UNAUTHENTICATED", "message": "Invalid or missing API key"},
         )
-    if settings.auth_enabled and not x_user_email:
-        raise HTTPException(
-            status_code=401,
-            detail={"code": "UNAUTHENTICATED", "message": "Google sign-in required"},
-        )
+    if settings.auth_enabled:
+        return session_email(request)
     return x_user_email or "default"
 
 def require_user(
+    request: Request,
     x_user_email: str | None = Header(default=None, alias="X-User-Email"),
     x_user_id: str | None = Header(default=None, alias="X-User-Id"),
     user: str | None = Query(default=None),
     service: bool = Depends(service_caller),
 ) -> str:
-    """Read the user's identity from the headers the frontend sets.
+    """Return the caller's identity.
 
-    The frontend looks up the user's email through Google's /userinfo after
-    sign-in and sends it as ``X-User-Email``, with an optional ``X-User-Id``.
-    The token is not verified here, so this is only safe behind a gateway or on
-    an internal network.
+    With sign-in on, only the session cookie counts; ``X-User-Email``,
+    ``X-User-Id`` and ``?user=`` are ignored. The rest of this docstring is
+    about sign-in off (development), where those values are trusted as sent.
 
     The ``?user=`` query parameter is the same identity by another route, for
     the requests that cannot carry a header at all. A plot, a crown thumbnail
@@ -138,12 +170,7 @@ def require_user(
         return email or "system"
     if not settings.auth_enabled:
         return email or "default"
-    if not email:
-        raise HTTPException(
-            status_code=401,
-            detail={"code": "UNAUTHENTICATED", "message": "Google sign-in required"},
-        )
-    return email
+    return session_email(request)
 
 def require_service_token(
     x_service_token: str | None = Header(default=None),

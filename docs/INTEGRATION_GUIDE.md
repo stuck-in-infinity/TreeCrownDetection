@@ -262,7 +262,7 @@ IMAGE_FRONTEND=anunay12/treecrown-frontend:latest
 | `TCP_DRONE_DAG_ID` | No | `drone_pipeline` | Name of the Airflow DAG to trigger |
 | `TCP_STORAGE_ROOT` | Yes | `/data/storage` | Where project files are stored |
 | `TCP_DATABASE_URL` | Yes | SQLite in /data | SQLAlchemy DB URL. Leave at the default and use the `TCP_DB_*` parts for Postgres. |
-| `TCP_DB_NAME` / `TCP_DB_USER` / `TCP_DB_PASSWORD` / `TCP_DB_HOST` / `TCP_DB_PORT` | No | — / — / — / `db` / `5432` | Postgres by parts; the password is percent-encoded for you. |
+| `TCP_DB_NAME` / `TCP_DB_USER` / `TCP_DB_PASSWORD` / `TCP_DB_HOST` / `TCP_DB_PORT` | No | — / — / — / `db` / `5432` | Postgres by parts; the password is percent-encoded for you. `docker-compose.hub.yml` requires `TCP_DB_HOST`. |
 | `TCP_DB_FALLBACK_SQLITE` | No | `true` | Start on SQLite if Postgres is unreachable at boot. `GET /readyz` reports which backend is live. |
 | `TCP_MODELS_DIR` | Yes | `/models` | Path to detector weight files |
 | `TCP_DEFAULT_MODEL_KEY` | No | `urban_cambridge` | Default detector model |

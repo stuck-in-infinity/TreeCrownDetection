@@ -2212,34 +2212,76 @@ document.addEventListener("click", (e) => {
   if(a && a.getAttribute("href") === location.hash) route();
 });
 
-// Google sign-in (browser token flow).
-// The token stays in memory and is used once, to read /userinfo.
-const AUTH = { email:null, userId:null, token:null, client:null, ready:false };
-const CLIENT_ID = APP_CONFIG.googleClientId || "";
-// Without a real client id the gate is skipped.
-const AUTH_CONFIGURED = !!CLIENT_ID && !/PASTE_YOUR_CLIENT_ID/.test(CLIENT_ID);
+// Google sign-in. Mode comes from the server's /auth/config:
+//  "session": sign-in on. Token goes to /auth/google, server sets a cookie.
+//  "legacy":  sign-in off, client id set. Email sent as X-User-Email (dev).
+//  "off":     no client id, no sign-in screen.
+const AUTH = { mode:"off", clientId:"", email:null, userId:null, token:null,
+               client:null, ready:false, booted:false };
+
+// Ask the server whether sign-in is on. Falls back to the config block.
+async function loadAuthConfig(){
+  let enabled = false, clientId = APP_CONFIG.googleClientId || "";
+  try{
+    const r = await fetch(apiBase() + "/api/v1/auth/config",
+                          {headers: {"X-Requested-With": "XMLHttpRequest"}});
+    if(r.ok){
+      const j = await r.json();
+      enabled = !!j.enabled;
+      clientId = j.google_client_id || clientId;
+    }
+  }catch(e){ /* older server or unreachable: fall back to the config block */ }
+  const realId = !!clientId && !/PASTE_YOUR_CLIENT_ID/.test(clientId);
+  AUTH.clientId = clientId;
+  AUTH.mode = enabled ? "session" : (realId ? "legacy" : "off");
+}
+
+// Reuse an existing session so a reload doesn't ask again.
+async function loadSession(){
+  try{
+    const r = await fetch(apiBase() + "/api/v1/auth/me",
+      {credentials: "include", headers: {"X-Requested-With": "XMLHttpRequest"}});
+    if(!r.ok) return false;
+    const j = await r.json();
+    AUTH.email = j.email || null;
+    return !!AUTH.email;
+  }catch(e){ return false; }
+}
+
+// Send cookies in session mode, also to an API on another origin.
+function credMode(){ return AUTH.mode === "session" ? "include" : "same-origin"; }
 
 function authHeaders(){
-  const h = {};
-  if(AUTH.email) h["X-User-Email"] = AUTH.email;
-  if(AUTH.userId) h["X-User-Id"] = AUTH.userId;
+  // Required by the server's CSRF check.
+  const h = {"X-Requested-With": "XMLHttpRequest"};
+  if(AUTH.mode === "legacy"){
+    if(AUTH.email) h["X-User-Email"] = AUTH.email;
+    if(AUTH.userId) h["X-User-Id"] = AUTH.userId;
+  }
   return h;
 }
 
 function initGis(){
+  if(AUTH.client) return;
   // Wait for the async gsi/client script.
   if(!window.google || !google.accounts || !google.accounts.oauth2){
     return setTimeout(initGis, 150);
   }
   AUTH.client = google.accounts.oauth2.initTokenClient({
-    client_id: CLIENT_ID,
-    scope: "openid email profile",
+    client_id: AUTH.clientId,
+    scope: AUTH.mode === "session" ? "openid email" : "openid email profile",
     callback: async (resp) => {
       if(resp.error){ gateError("Sign-in was cancelled or failed."); return; }
+      if(AUTH.mode === "session"){ await exchangeToken(resp.access_token); return; }
       AUTH.token = resp.access_token;
       await fetchUserInfo();
       if(AUTH.email){ onSignedIn(); }
       else { gateError("Could not read your Google profile. Try again."); }
+    },
+    error_callback: (err) => {
+      gateError(err && err.type === "popup_failed_to_open"
+        ? "The sign-in window was blocked. Allow pop-ups for this site and try again."
+        : "The sign-in window was closed before sign-in finished.");
     },
   });
   AUTH.ready = true;
@@ -2254,6 +2296,31 @@ function requestLogin(){
   AUTH.client.requestAccessToken();   // shows the consent popup
 }
 
+// Send Google's token to the server, which verifies it and sets the cookie.
+async function exchangeToken(token){
+  gateError("");
+  let r;
+  try{
+    r = await fetch(apiBase() + "/api/v1/auth/google", {
+      method: "POST", credentials: "include",
+      headers: {"Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest"},
+      body: JSON.stringify({access_token: token}),
+    });
+  }catch(e){
+    gateError("Could not reach the server to finish signing in. Try again.");
+    return;
+  }
+  let body = null;
+  try{ body = await r.json(); }catch(_){}
+  if(!r.ok){
+    const d = body && body.error;
+    gateError((d && d.message) || ("Sign-in failed (" + r.status + ")."));
+    return;
+  }
+  AUTH.email = body && body.email;
+  onSignedIn();
+}
+
 async function fetchUserInfo(){
   if(!AUTH.token) return;
   try{
@@ -2265,7 +2332,28 @@ async function fetchUserInfo(){
 
 function gateError(msg){ const e = $("gateErr"); if(e) e.textContent = msg || ""; }
 
-function signOut(){
+function showGate(msg){
+  const gate = $("auth-gate"); if(gate) gate.classList.remove("hidden");
+  gateError(msg || "");
+  initGis();
+}
+
+// Session ended (401): show the sign-in screen, keep the page state.
+function onUnauthenticated(){
+  if(AUTH.mode !== "session") return;
+  AUTH.email = null;
+  showGate("Your session has ended. Sign in again to continue; your work is kept.");
+}
+
+async function signOut(){
+  if(AUTH.mode === "session"){
+    try{
+      await fetch(apiBase() + "/api/v1/auth/logout", {method: "POST", credentials: "include",
+        headers: {"X-Requested-With": "XMLHttpRequest"}});
+    }catch(e){}
+    location.reload();
+    return;
+  }
   try{ if(AUTH.token && google.accounts.oauth2) google.accounts.oauth2.revoke(AUTH.token, ()=>{}); }catch(e){}
   AUTH.email = AUTH.userId = AUTH.token = null;
   location.reload();
@@ -2274,17 +2362,25 @@ function signOut(){
 function onSignedIn(){
   const gate = $("auth-gate"); if(gate) gate.classList.add("hidden");
   const gv = document.querySelector("#auth-gate video"); if(gv) gv.pause();  // hidden video keeps playing otherwise
+  gateError("");
   const who = $("whoami");
   if(who && AUTH.email){
-    who.innerHTML = 'Signed in as <b>'+AUTH.email+'</b><button onclick="signOut()">Sign out</button>';
+    // textContent, not innerHTML, so the email can't inject markup.
+    const b = document.createElement("b"); b.textContent = AUTH.email;
+    const btn = document.createElement("button"); btn.textContent = "Sign out";
+    btn.onclick = signOut;
+    who.replaceChildren(document.createTextNode("Signed in as "), b, btn);
   }
+  // Already loaded: don't reload data when signing back in.
+  if(AUTH.booted) return;
+  AUTH.booted = true;
   // Restore the open project first, so the past-runs list marks it.
   populateModels();
   restoreOpenProject().then(loadMyProjects);
 }
 // Logs live on the server; log() is a no-op.
 function log(msg){ /* no-op — server-side logging only */ }
-// Identity headers the backend reads for audit and ownership.
+// Headers for every API call.
 function headers(extra){ return Object.assign({}, authHeaders(), extra||{}); }
 
 // Transport diagnosis: failures in reaching the API, not application errors.
@@ -2418,7 +2514,7 @@ async function api(path, opts={}){
   let res;
   try{
     res = await fetch(url, Object.assign(fetchOpts, {
-      headers: headers(opts.headers), signal: ctl.signal,
+      headers: headers(opts.headers), signal: ctl.signal, credentials: credMode(),
     }));
   }catch(e){
     clearTimeout(timer);
@@ -2434,6 +2530,7 @@ async function api(path, opts={}){
     throw diagnoseFetchFailure();
   }
   clearTimeout(timer);
+  if(res.status === 401) onUnauthenticated();
 
   const ct = res.headers.get("content-type") || "";
   const isJson = ct.includes("application/json");
@@ -2480,6 +2577,7 @@ function apiUpload(path, formData, opts={}){
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("POST", url, true);
+    xhr.withCredentials = AUTH.mode === "session";
 
     // Never set Content-Type: the browser adds the multipart boundary.
     const h = headers(opts.headers);
@@ -2524,6 +2622,7 @@ function apiUpload(path, formData, opts={}){
 
     xhr.onload = () => {
       disarm();
+      if(xhr.status === 401) onUnauthenticated();
       const ct = xhr.getResponseHeader("content-type") || "";
       if(!ct.includes("application/json")){
         // Quote what came back, e.g. a proxy's HTML error page.
@@ -2624,7 +2723,8 @@ function assetUrl(u){
          + key + "=" + encodeURIComponent(val);
   };
   add("project_id", PID);
-  add("user", AUTH.email);
+  // In session mode the cookie covers <img> and <a> links.
+  if(AUTH.mode === "legacy") add("user", AUTH.email);
   return out;
 }
 
@@ -4004,7 +4104,7 @@ function showOpenRunReview(p){
 }
 
 
-// Boot. Show the sign-in gate when auth is configured, otherwise skip it.
+// Boot. Show the sign-in screen unless sign-in is off or already signed in.
 window.addEventListener("load", ()=>{
   // Independent of auth: field hints and the guide route are static content.
   renderHints();
@@ -4017,14 +4117,21 @@ window.addEventListener("load", ()=>{
   });
   validateParams();
 
-  if(AUTH_CONFIGURED){
-    initGis();                         // gate stays visible until sign-in
-  } else {
+  bootAuth();
+});
+
+async function bootAuth(){
+  await loadAuthConfig();
+  if(AUTH.mode === "off"){
     const gate = $("auth-gate"); if(gate) gate.classList.add("hidden");
+    AUTH.booted = true;
     populateModels();
     restoreOpenProject().then(loadMyProjects);
+    return;
   }
-});
+  if(AUTH.mode === "session" && await loadSession()){ onSignedIn(); return; }
+  initGis();                           // gate stays visible until sign-in
+}
 </script>
 
 <script>
