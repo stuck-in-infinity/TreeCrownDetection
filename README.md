@@ -82,7 +82,7 @@ Other settings worth knowing (all documented inline in `.env.example`):
 | `TCP_THUMBS_PER_CLUSTER` | Crowns per cluster given a thumbnail during analysis (default 5). `0` renders them on demand instead. |
 | `TCP_AIRFLOW_BASE_URL` | Blank runs the pipeline in this process. **`.env.example` ships this set, so a fresh copy has Airflow ON** — blank it unless you have read §6. |
 | `TCP_ANALYZE_DAG_ID`, `TCP_FINALIZE_DAG_ID`, `TCP_DRONE_DAG_ID` | Which DAG each trigger starts (§6b). |
-| `TCP_DB_NAME`, `TCP_DB_USER`, `TCP_DB_PASSWORD`, `TCP_DB_HOST`, `TCP_DB_PORT` | Postgres by parts (needs `--profile postgres`); the backend composes the URL and encodes the password. First three names match the other production backend. Ignored when `TCP_DATABASE_URL` is set. |
+| `TCP_DB_NAME`, `TCP_DB_USER`, `TCP_DB_PASSWORD`, `TCP_DB_HOST`, `TCP_DB_PORT` | Postgres by parts; the backend composes the URL and encodes the password. `docker-compose.hub.yml` requires `TCP_DB_HOST`. First three names match the other production backend. Ignored when `TCP_DATABASE_URL` is set. |
 | `TCP_DB_FALLBACK_SQLITE` | Come up on SQLite when Postgres is unreachable at boot instead of crash-looping (default on). Serves different data — see §6h. Check `/readyz`. |
 | `TCP_ANALYZE_TIMEOUT_MIN`, `TCP_FINALIZE_TIMEOUT_MIN` | Minutes a run may take (default 10). Each run has its own process which **stops itself** at the limit and is recorded as `RUN_TIMEOUT`. `0`, or `TCP_RUN_TIMEOUT_ENABLED=false`, removes the limit. Read the warning in `.env.example` first — 10 minutes will kill healthy runs on a large survey. |
 | `TCP_COMPUTE_TOKEN` | Shared secret on the `/compute/*` callbacks; must equal `DRONE_SERVICE_TOKEN` on the Airflow worker (§6). |
@@ -168,20 +168,48 @@ what matters is the `"available"` flag on each entry. All `false` means
 On first boot the API creates the SQLite database and its tables under `data/`,
 so nothing else needs preparing.
 
-**Postgres** is opt-in and takes three steps:
+**`docker-compose.hub.yml` needs `TCP_DB_HOST` in `.env`**, or every compose
+command on that file stops with an error. To stay on SQLite with this file, set
+it to any value and leave `TCP_DB_NAME` unset; the host is then ignored.
+
+**Postgres on a server** uses an existing database. The hub file has no `db`
+service and needs no compose profile:
+
+```bash
+# 1. set these in .env
+#    TCP_DB_NAME, TCP_DB_USER, TCP_DB_PASSWORD
+#    TCP_DB_HOST=<IP of the Postgres server>
+#    TCP_DB_PORT=5432
+#    TCP_DB_FALLBACK_SQLITE=false
+#    Remove TCP_DATABASE_URL or leave it at the SQLite default: any other
+#    value overrides the parts above.
+# 2. create the schema — the API will NOT do this for you on Postgres
+docker compose -f docker-compose.hub.yml run --rm api alembic upgrade head
+# 3. start, then check /readyz says "database": "postgres", "degraded": false
+docker compose -f docker-compose.hub.yml up -d
+curl http://localhost:8200/readyz
+```
+
+If the server requires SSL, put a full URL in `.env` instead of the name, user
+and password: `TCP_DATABASE_URL=postgresql://user:pass@host:5432/db?sslmode=require`,
+with special characters in the password percent-encoded. `TCP_DB_HOST` is still
+required by the hub file. If Postgres runs on the same machine as the container,
+use `host.docker.internal` as the host.
+
+**Postgres in a local container** uses the `docker-compose.yml` profile:
 
 ```bash
 # 1. set TCP_DB_NAME / TCP_DB_USER / TCP_DB_PASSWORD in .env
 # 2. start the database (it lives behind a compose profile, so a plain
 #    `docker compose up` stays on SQLite exactly as before)
 docker compose --profile postgres up -d db
-# 3. create the schema — the API will NOT do this for you on Postgres
+# 3. create the schema
 docker compose run --rm api alembic upgrade head
 docker compose --profile postgres up -d
 ```
 
-Leave the profile off and everything behaves as it always has. The API logs a
-warning if it finds a Postgres database that has never been migrated.
+The API logs a warning if it finds a Postgres database that has never been
+migrated.
 
 ### e. What is switched on by default
 
@@ -599,7 +627,8 @@ Update images: docker compose -f docker-compose.hub.yml pull && \
                docker compose -f docker-compose.hub.yml up -d
 ```
 Data (projects, outputs) persists in `data/` across restarts. On Postgres the
-database lives in the `pgdata` named volume instead, not under `data/`.
+database lives on the Postgres server, or in the `pgdata` named volume with the
+local profile, not under `data/`.
 
 **On SQLite, schema changes apply themselves at boot**, so upgrading is just
 `pull` + `up -d`: `init_db()` creates any missing table (including `runs`) and
@@ -616,8 +645,8 @@ to stop the service booting: projects that predate the `runs` table get a row
 per run they have had, and any run left mid-flight by a restart is released so
 it can be re-run.
 
-**Backups.** On Postgres:
-`docker compose exec -T db pg_dump -U treecrown -Fc treecrown > backup-$(date +%F).dump`.
+**Backups.** An external Postgres is backed up on its own server. With the local
+profile: `docker compose exec -T db pg_dump -U treecrown -Fc treecrown > backup-$(date +%F).dump`.
 On SQLite the database uses WAL, so `data/treecrown.db` is nearly empty on its
 own and the live contents sit in `treecrown.db-wal` — **copy all three of
 `treecrown.db`, `-wal` and `-shm` together**, or the backup will look blank.

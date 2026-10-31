@@ -64,10 +64,9 @@ services:
     logging: *default-logging
     env_file: .env
     environment:
-      # Set here, not in .env: `env_file:` passes values literally, so ${VAR}
-      # inside .env arrives as those characters.
-      TCP_DB_HOST: db
-      TCP_DB_PORT: "5432"
+      # Defaults to the db service; set in .env to use an outside Postgres.
+      TCP_DB_HOST: ${TCP_DB_HOST:-db}
+      TCP_DB_PORT: ${TCP_DB_PORT:-5432}
     depends_on:
       db:
         condition: service_healthy
