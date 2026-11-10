@@ -58,33 +58,51 @@ def project_paths(project_id: str, run: int = 1) -> dict:
     }
 
 
-def detection_overlay_path(project_id: str, run: int = 1) -> str | None:
+def run_stems(project_id: str, run: int = 1) -> list[str]:
+    """Ortho stems with outputs in this run, read from disk."""
+    p = project_paths(project_id, run)
+    stems: set[str] = set()
+    try:
+        stems.update(d for d in os.listdir(p["detectree"])
+                     if os.path.isdir(os.path.join(p["detectree"], d)))
+    except OSError:
+        pass
+    try:
+        stems.update(os.path.splitext(f)[0] for f in os.listdir(p["polygons"])
+                     if f.lower().endswith(".geojson"))
+    except OSError:
+        pass
+    return sorted(stems)
+
+
+def detection_overlay_path(project_id: str, run: int = 1,
+                           stem: str | None = None) -> str | None:
     """The run's detection overlay (crowns outlined on the orthomosaic), or
     None if detection never got far enough to draw one.
 
-    Detection writes into ``detectree/<ortho stem>/``, so the folder name is not
-    fixed; a run is pinned to one orthomosaic, so the first by name is the one.
+    Detection writes into ``detectree/<ortho stem>/``. ``stem`` picks one;
+    default the first with an overlay.
     """
     det = project_paths(project_id, run)["detectree"]
-    try:
-        subs = sorted(d for d in os.listdir(det) if os.path.isdir(os.path.join(det, d)))
-    except OSError:
-        return None
-    for d in subs:
+    for d in ([stem] if stem else run_stems(project_id, run)):
         f = os.path.join(det, d, "overlay.png")
         if os.path.exists(f):
             return f
     return None
 
 
-def first_polygon_geojson(project_id: str, run: int = 1) -> str | None:
+def first_polygon_geojson(project_id: str, run: int = 1,
+                          stem: str | None = None) -> str | None:
     """The run's crown-polygon GeoJSON, or None if the run wrote none.
 
     One file per orthomosaic lands in ``polygons/``, named after the ortho stem,
-    so there is no fixed filename to look up. Callers that serve or describe the
-    layer take the first by name, which keeps the choice stable across calls.
+    so there is no fixed filename to look up. ``stem`` picks one; default the
+    first by name.
     """
     poly = project_paths(project_id, run)["polygons"]
+    if stem:
+        f = os.path.join(poly, f"{stem}.geojson")
+        return f if os.path.exists(f) else None
     try:
         files = sorted(f for f in os.listdir(poly) if f.lower().endswith(".geojson"))
     except OSError:

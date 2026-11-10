@@ -1132,18 +1132,11 @@
         </h2>
         <p class="lead">Pick the models and tune the run, then start detection + clustering.</p>
         <div id="runinfo" class="muted" style="margin-bottom:10px"></div>
-        <!-- Which orthomosaic this run uses, filled by renderRunOrtho(). -->
+        <!-- Picked orthos + EPSG inputs, filled by renderRunOrtho(). -->
         <div id="runOrtho" class="note" style="display:none"></div>
         <label>Run name <span class="muted">(for your own reference)</span></label>
         <input id="runname" placeholder="run label" />
 
-        <!-- Shown only when the GeoTIFF has no CRS. -->
-        <div id="epsgFallback" class="note" style="display:none">
-          <span class="warn">No CRS found in the GeoTIFF.</span>
-          Enter the EPSG code of the survey's coordinate system — exports will be
-          georeferenced incorrectly without it.
-          <input id="p_epsg" type="number" placeholder="e.g. 32643" />
-        </div>
 
         <div class="guide-banner">
           <p><b>Not sure what these settings do?</b>
@@ -2742,10 +2735,6 @@ async function refreshProject(){
   if(busy){ ln.style.display="block"; ln.innerHTML='<span class="warn">Run in progress.</span> The orthomosaic library can\'t change while a run is going &mdash; it reopens as soon as the run finishes.'; }
   else { ln.style.display="none"; }
   refreshOrthos(p);
-  // No CRS detected: the user must supply the EPSG.
-  const needsEpsg = (p.orthos||[]).length > 0 && !p.source_epsg;
-  $("epsgFallback").style.display = needsEpsg ? "block" : "none";
-  if(!needsEpsg) $("p_epsg").value = "";
   const run=p.current_run||1;
   CURRENT_RUN=run;
   // Restore this tab's run once, if it still exists.
@@ -2779,9 +2768,11 @@ async function refreshRunLists(){
 }
 
 // Orthomosaic library (step 2)
-// ORTHOS mirrors the server list; SELECTED_ORTHO is the id the next run uses.
+// ORTHOS mirrors the server list; SELECTED_ORTHOS are the ids the next run uses.
+// ORTHO_EPSG: typed EPSG per ortho id.
 let ORTHOS = [];
-let SELECTED_ORTHO = null;
+let SELECTED_ORTHOS = [];
+let ORTHO_EPSG = {};
 let ORTHO_USAGE = null;
 
 // Attribute-safe escape; esc() only covers text nodes.
@@ -2790,13 +2781,14 @@ const escAttr = (s) => esc(s).replace(/"/g, "&quot;");
 // Selection is per project. Wrapped because localStorage can throw.
 const orthoKey = () => "tcp.selectedOrtho." + PID;
 function saveOrthoSel(){
-  try{ if(PID && SELECTED_ORTHO) localStorage.setItem(orthoKey(), SELECTED_ORTHO); }catch(e){}
+  try{ if(PID) localStorage.setItem(orthoKey(), JSON.stringify(SELECTED_ORTHOS)); }catch(e){}
 }
+// Array; older pages stored one id.
 function loadOrthoSel(){
-  try{ return PID ? localStorage.getItem(orthoKey()) : null; }catch(e){ return null; }
-}
-function clearOrthoSel(){
-  try{ if(PID) localStorage.removeItem(orthoKey()); }catch(e){}
+  let v = null;
+  try{ v = PID ? localStorage.getItem(orthoKey()) : null; }catch(e){ return []; }
+  if(!v) return [];
+  try{ const a = JSON.parse(v); return Array.isArray(a) ? a : [v]; }catch(e){ return [v]; }
 }
 
 function fmtBytes(n){
@@ -2819,15 +2811,14 @@ async function refreshOrthos(project){
   }
   // Restore the selection: this browser's pick, then the run's ortho, then the only ortho.
   const ids = ORTHOS.map(o => o.id);
-  if(!ids.includes(SELECTED_ORTHO)) SELECTED_ORTHO = null;
-  if(!SELECTED_ORTHO){
-    const stored = loadOrthoSel();
-    if(stored && ids.includes(stored)) SELECTED_ORTHO = stored;
+  const known = list => list.filter(id => ids.includes(id));
+  SELECTED_ORTHOS = known(SELECTED_ORTHOS);
+  if(!SELECTED_ORTHOS.length) SELECTED_ORTHOS = known(loadOrthoSel());
+  if(!SELECTED_ORTHOS.length && project && project.params){
+    const pp = project.params;
+    SELECTED_ORTHOS = known(pp.ortho_ids || (pp.ortho_id ? [pp.ortho_id] : []));
   }
-  if(!SELECTED_ORTHO && project && project.params && ids.includes(project.params.ortho_id)){
-    SELECTED_ORTHO = project.params.ortho_id;
-  }
-  if(!SELECTED_ORTHO && ORTHOS.length === 1) SELECTED_ORTHO = ORTHOS[0].id;
+  if(!SELECTED_ORTHOS.length && ORTHOS.length === 1) SELECTED_ORTHOS = [ORTHOS[0].id];
   saveOrthoSel();
   renderOrthos();
 }
@@ -2840,7 +2831,7 @@ function renderOrthos(){
   const busy = $("btnUpload") && $("btnUpload").disabled;
   let rows = "";
   for(const o of ORTHOS){
-    const picked = o.id === SELECTED_ORTHO;
+    const picked = SELECTED_ORTHOS.includes(o.id);
     const dims = (o.width && o.height) ? (o.width+" × "+o.height+" px") : "size unknown";
     const epsg = o.crs_epsg ? ("EPSG:"+o.crs_epsg) : (o.crs ? esc(o.crs) : "no CRS");
     const bands = o.bands ? (o.bands+" bands") : "";
@@ -2852,7 +2843,7 @@ function renderOrthos(){
     +   '<td class="sel"><input type="checkbox" class="ortho-pick" value="'+escAttr(o.id)+'" '
     +     (picked?"checked ":"")+(busy?"disabled ":"")
     +     'onchange="toggleOrtho(this.value, this.checked)" '
-    +     'aria-label="Use '+escAttr(o.filename)+' for the next run" /></td>'
+    +     'aria-label="Use '+escAttr(o.filename)+' in the next run" /></td>'
     +   '<td><span class="ortho-name">'+esc(o.filename)+'</span>'+stemNote
     +     (o.missing?' <span class="err">file missing on server</span>':"")+'</td>'
     +   '<td class="ortho-meta">'+esc(dims)+(bands?" &middot; "+esc(bands):"")+'</td>'
@@ -2886,10 +2877,11 @@ function renderOrthos(){
   renderRunOrtho();
 }
 
-// A run takes one orthomosaic, so the checkboxes behave as a single pick.
+// Multi-select; each picked ortho is processed separately.
 function toggleOrtho(id, checked){
-  SELECTED_ORTHO = checked ? id : null;
-  if(checked) saveOrthoSel(); else clearOrthoSel();
+  SELECTED_ORTHOS = SELECTED_ORTHOS.filter(x => x !== id);
+  if(checked) SELECTED_ORTHOS.push(id);
+  saveOrthoSel();
   renderOrthos();
   const info = $("ainfo");
   if(checked && info && /orthomosaic/i.test(info.textContent||"")) info.innerHTML = "";
@@ -2898,10 +2890,24 @@ function toggleOrtho(id, checked){
 // Kept: called from the row click target and from older call sites.
 function selectOrtho(id){ toggleOrtho(id, true); }
 
+// Replace the selection, e.g. with an opened run's orthos.
+function setOrthoSelection(ids){
+  SELECTED_ORTHOS = ids.filter(id => ORTHOS.some(o => o.id === id));
+  saveOrthoSel();
+  renderOrthos();
+}
+
+// "a.tif, b.tif" for headings.
+function runOrthoNames(entry){
+  if(!entry) return "";
+  const names = (entry.orthos || []).map(o => o.filename || o.stem).filter(Boolean);
+  return names.length ? names.join(", ") : (entry.ortho || "");
+}
+
 /* Runs on one orthomosaic. ACTIVE_RUN is the run steps 3-5 act on; null means the newest. */
 let ACTIVE_RUN = null;
 const ORTHO_RUNS = {};        // ortho id -> the runs the server listed
-let RUN_BANNER_ORTHO = null;  // the opened run's ortho filename, for the banner
+let RUN_BANNER_ORTHO = null;  // the opened run's ortho filename(s), for the banner
 const ORTHO_RUNS_OPEN = {};   // ortho id -> is the list showing
 const ACTIVE_RUN_KEY = "tcp.activeRun";
 
@@ -2954,13 +2960,13 @@ function renderLabelPicker(){
   for(const r of rows){
     const on = r.run === cur;
     const bits = [];
-    if(r.ortho) bits.push(esc(r.ortho));
+    if(runOrthoNames(r)) bits.push(esc(runOrthoNames(r)));
     bits.push(esc(RUN_WORDS[r.state] || r.state || ""));
     if(r.label_count) bits.push(r.label_count + ' named');
     html += '<button type="button" class="rpick' + (on ? " rpick-on" : "") + '"'
       + (on ? ' aria-current="true" disabled' : ' onclick="pickLabelRun(' + r.run + ')"')
       + ' title="' + escAttr((r.run_name || ("Run " + r.run))
-                             + (r.ortho ? " on " + r.ortho : "")) + '">'
+                             + (runOrthoNames(r) ? " on " + runOrthoNames(r) : "")) + '">'
       + '<b>Run ' + r.run + '</b>'
       + (r.run_name ? ' ' + esc(r.run_name) : '')
       + '<span class="rpick-sub">' + bits.join(' &middot; ') + '</span>'
@@ -3079,8 +3085,8 @@ function applyRunParams(entry){
   if(cov && params.full_coverage !== undefined) cov.checked = !!params.full_coverage;
   const kl = $("klist");
   if(kl && Array.isArray(params.k_list) && params.k_list.length) kl.value = params.k_list.join(",");
-  const epsg = $("p_epsg");
-  if(epsg && entry.source_epsg) epsg.value = entry.source_epsg;
+  const oe = params.ortho_epsg || {};
+  for(const o of ORTHOS) if(oe[o.stem]) ORTHO_EPSG[o.id] = oe[o.stem];
   const mk = $("modelKey");
   if(mk && entry.model_key) mk.value = entry.model_key;
   const rn = $("runname");
@@ -3112,9 +3118,11 @@ async function openRun(n, opts){
   const entry = await runEntry(n);
   if(entry){
     applyRunParams(entry);
-    if(entry.ortho_id) toggleOrtho(entry.ortho_id, true);
+    const ids = (entry.orthos || []).map(o => o.id).filter(Boolean);
+    if(ids.length) setOrthoSelection(ids);
+    else if(entry.ortho_id) setOrthoSelection([entry.ortho_id]);
   }
-  RUN_BANNER_ORTHO = entry && entry.ortho ? entry.ortho : null;
+  RUN_BANNER_ORTHO = runOrthoNames(entry) || null;
 
   renderRunBanner();
   renderLabelPicker();                 // move the tick to the run now open
@@ -3155,24 +3163,64 @@ function renderRunBanner(){
     + 'Switch back to the newest run</button>';
 }
 
-function selectedOrtho(){
-  return ORTHOS.find(o => o.id === SELECTED_ORTHO) || null;
+function selectedOrthos(){
+  return SELECTED_ORTHOS.map(id => ORTHOS.find(o => o.id === id)).filter(Boolean);
 }
 
-// Step 3's one-line statement of what the run will actually use.
+// Centre distance (km) of two [w,s,e,n] boxes.
+function boxKm(a, b){
+  const rad = d => d * Math.PI / 180;
+  const lat1 = rad((a[1]+a[3])/2), lat2 = rad((b[1]+b[3])/2);
+  const dlat = lat2 - lat1, dlon = rad((b[0]+b[2])/2 - (a[0]+a[2])/2);
+  const h = Math.sin(dlat/2)**2 + Math.cos(lat1)*Math.cos(lat2)*Math.sin(dlon/2)**2;
+  return 12742 * Math.asin(Math.sqrt(h));
+}
+
+// Warn above this distance.
+const FAR_KM = 50;
+
+// Step 3: picked orthos, distance/CRS warning, EPSG inputs.
 function renderRunOrtho(){
   const box = $("runOrtho"); if(!box) return;
   if(!ORTHOS.length){ box.style.display="none"; box.innerHTML=""; return; }
   box.style.display="block";
-  const sel = selectedOrtho();
-  if(!sel){
+  const sel = selectedOrthos();
+  if(!sel.length){
     box.innerHTML = '<span class="warn">No orthomosaic selected.</span> '
-      + 'Pick one in step 2 — this project has ' + ORTHOS.length + ' to choose from.';
+      + 'Tick one or more in step 2 — this project has ' + ORTHOS.length + ' to choose from.';
     return;
   }
-  box.innerHTML = 'This run will use <b>' + esc(sel.filename) + '</b>'
-    + ((sel.stem + ".tif") !== sel.filename ? ' <span class="pill">'+esc(sel.stem)+'</span>' : "")
+  const name = o => '<b>' + esc(o.filename) + '</b>'
+    + ((o.stem + ".tif") !== o.filename ? ' <span class="pill">'+esc(o.stem)+'</span>' : "");
+  let html = 'This run will use ' + sel.map(name).join(", ")
     + (ORTHOS.length > 1 ? ' <span class="muted">— change it in step 2.</span>' : "");
+  if(sel.length > 1){
+    html += '<div class="muted" style="margin-top:6px">Each orthomosaic is detected and '
+      + 'exported on its own, in its own coordinate system &mdash; they are never stitched '
+      + 'together. Their crowns are grouped together, so you name the groups once.</div>';
+    const crss = new Set(sel.map(o => o.crs_epsg || o.crs || "none"));
+    const boxes = sel.map(o => o.bounds_wgs84).filter(Boolean);
+    let far = 0;
+    for(let i = 0; i < boxes.length; i++)
+      for(let j = i + 1; j < boxes.length; j++) far = Math.max(far, boxKm(boxes[i], boxes[j]));
+    if(crss.size > 1 || far > FAR_KM){
+      html += '<div class="warn" style="margin-top:6px">These orthomosaics are '
+        + (far > FAR_KM ? 'about ' + Math.round(far) + ' km apart' : 'in different coordinate systems')
+        + '. Each still gets its own map and KMZ, but trees from very different regions may '
+        + 'group by site rather than by species. Check the "by orthomosaic" plot in the '
+        + 'review, or run them separately.</div>';
+    }
+  }
+  // EPSG input per ortho without a CRS.
+  for(const o of sel.filter(o => !o.crs)){
+    html += '<div style="margin-top:8px"><span class="warn">No CRS in ' + esc(o.filename) + '.</span> '
+      + 'Enter the EPSG code of its coordinate system — its exports will be '
+      + 'georeferenced incorrectly without it.'
+      + '<input type="number" class="ortho-epsg" placeholder="e.g. 32643" data-oid="' + escAttr(o.id) + '"'
+      + ' value="' + escAttr(ORTHO_EPSG[o.id] || "") + '"'
+      + ' oninput="ORTHO_EPSG[this.getAttribute(\'data-oid\')]=this.value.trim()" /></div>';
+  }
+  box.innerHTML = html;
 }
 
 async function populateModels(){
@@ -3215,7 +3263,7 @@ async function createProject(){
 function afterOrthoAdded(p, before, what){
   const added = (p.orthos||[]).find(o => !before.includes(o.id));
   if(added){
-    SELECTED_ORTHO = added.id;      // newly added ortho becomes the selection
+    SELECTED_ORTHOS = [added.id];   // newly added ortho becomes the selection
     saveOrthoSel();
     const renamed = (added.stem + ".tif") !== added.filename;
     $("oinfo").innerHTML =
@@ -3301,14 +3349,14 @@ async function uploadOrtho(){
   if(files.length===1 && p){ afterOrthoAdded(p, before, "registered"); return; }
   if(p) selectNewest(p, before);
   $("oinfo").innerHTML='<span class="ok">'+done.length+' orthomosaics registered</span>'
-    + ' <span class="muted">&middot; tick the one this run should use</span>';
+    + ' <span class="muted">&middot; tick the ones this run should use</span>';
   refreshProject();
 }
 
-// After a batch, select the last newly added ortho.
+// After a batch, select all added orthos.
 function selectNewest(p, before){
   const added=(p.orthos||[]).filter(o=>!before.includes(o.id));
-  if(added.length){ SELECTED_ORTHO=added[added.length-1].id; saveOrthoSel(); }
+  if(added.length){ SELECTED_ORTHOS=added.map(o=>o.id); saveOrthoSel(); }
 }
 
 async function uploadUrl(){
@@ -3454,15 +3502,22 @@ async function analyze(){
     $("ainfo").innerHTML = '<span class="err">'+errs[0]+'</span>';
     return;
   }
-  if($("epsgFallback").style.display!=="none" && $("p_epsg").value.trim()===""){
-    $("ainfo").innerHTML='<span class="err">Enter the source EPSG — it could not be detected from the GeoTIFF.</span>';
-    return;
-  }
-  // A run needs exactly one orthomosaic.
-  if(ORTHOS.length && !selectedOrtho()){
-    $("ainfo").innerHTML='<span class="err">Pick which orthomosaic this run should use in step 2 &mdash; '
+  // At least one ortho.
+  const picked = selectedOrthos();
+  if(ORTHOS.length && !picked.length){
+    $("ainfo").innerHTML='<span class="err">Tick which orthomosaics this run should use in step 2 &mdash; '
       + 'this project has '+ORTHOS.length+' of them.</span>';
     return;
+  }
+  const orthoEpsg = {};
+  for(const o of picked.filter(o => !o.crs)){
+    const v = parseInt(ORTHO_EPSG[o.id], 10);
+    if(!(v > 0)){
+      $("ainfo").innerHTML='<span class="err">Enter the EPSG for '+esc(o.filename)
+        +' — it could not be detected from the GeoTIFF.</span>';
+      return;
+    }
+    orthoEpsg[o.id] = v;
   }
   $("btnAnalyze").disabled=true; $("aprog").style.display="block"; $("ainfo").textContent="";
   $("clusterRows").innerHTML=""; $("linfo").textContent=""; $("results").textContent="";
@@ -3472,9 +3527,11 @@ async function analyze(){
       project_id: PID,
       run_name: $("runname").value.trim()||null,
       model_key: $("modelKey").value||null,
-      // Which ortho this run uses; omitted when nothing is selected.
-      ortho_id: SELECTED_ORTHO||undefined,
-      source_epsg: numOrNull("p_epsg"),
+      // Omitted when nothing is selected.
+      ortho_ids: SELECTED_ORTHOS.length ? SELECTED_ORTHOS : undefined,
+      ortho_epsg: Object.keys(orthoEpsg).length ? orthoEpsg : undefined,
+      // One ortho: also sent as source_epsg.
+      source_epsg: picked.length === 1 && orthoEpsg[picked[0].id] ? orthoEpsg[picked[0].id] : null,
       params:{
         tile_size:+$("p_tile").value, buffer:+$("p_buf").value,
         iou_threshold:+$("p_iou").value, conf_threshold:+$("p_conf").value,
@@ -3508,7 +3565,7 @@ async function analyze(){
     $("ainfo").innerHTML=explainFull(e); $("ainfo").dataset.msg="run";
     log("analyze failed: "+e.message);
     // The library view is stale, so re-read it.
-    if(e && (e.code==="ORTHO_NOT_FOUND"||e.code==="ORTHO_SELECTION_REQUIRED")) refreshProject();
+    if(e && ["ORTHO_NOT_FOUND","ORTHO_SELECTION_REQUIRED","ORTHO_EPSG_REQUIRED"].includes(e.code)) refreshProject();
   }
   // Re-enable via validateParams, as a field may now be invalid.
   finally{ $("aprog").style.display="none"; validateParams(); }
@@ -3537,12 +3594,15 @@ function renderClusterReview(c){
   REVIEW.run = c.run || CURRENT_RUN || 1;
   REVIEW.recommended = c.recommended_k || null;
   REVIEW.files_url = c.files_url || null;
-  // The run's own ortho, else the one selected in step 2.
-  const oid = c.ortho_id || SELECTED_ORTHO;
-  const orthoName = (ORTHOS.find(o => o.id === oid) || {}).filename || "";
+  // The run's own ortho(s), else the selection in step 2.
+  const sites = c.sites || [];
+  const orthoName = sites.length
+    ? sites.map(st => st.filename || st.stem).join(", ")
+    : ((ORTHOS.find(o => o.id === (c.ortho_id || SELECTED_ORTHOS[0])) || {}).filename || "");
 
   // detection_overlay_url is null when the run wrote no overlay.
-  const overlay = c.detection_overlay_url ? overlayMap(REVIEW.run) : "";
+  const overlay = sites.length ? siteTabs(REVIEW.run, sites, "overlay")
+    : (c.detection_overlay_url ? overlayMap(REVIEW.run) : "");
 
   if(!avail.length){
     box.innerHTML = (overlay ? '<div class="review">' + overlay + '</div>' : '')
@@ -3560,6 +3620,13 @@ function renderClusterReview(c){
     + '<div class="review-head"><div class="review-title">' + title + '</div>'
     + fbLink + '</div>'
     + overlay
+    + (c.tsne_sites_url
+        ? '<div class="review-sub">Crowns by orthomosaic</div>'
+          + '<p class="muted" style="margin:0 0 6px">Same t-SNE as below, coloured by which '
+          + 'orthomosaic each crown came from. If the colours form separate islands, the '
+          + 'groups are splitting by site (light, season) more than by species.</p>'
+          + reviewImg(assetUrl(c.tsne_sites_url), "t-SNE by orthomosaic for run " + REVIEW.run, "plot")
+        : '')
     + reviewImg(assetUrl(c.k_selection_plot_url), "k-selection plot for run " + REVIEW.run, "plot")
     + '<div class="review-krow"><span class="muted">Compare a k:</span>';
   for(const k of avail){
@@ -3665,6 +3732,56 @@ function overlayMap(run){
                  "Every crown found on this orthomosaic, before any species is named. Click to enlarge.");
 }
 
+// One tab per ortho; kind is "overlay" or "species".
+function siteTabs(run, sites, kind){
+  const id = "sites_" + kind + "_" + run;
+  let html = '<div class="review-krow"><span class="muted">Orthomosaic:</span>';
+  sites.forEach((st, i) => {
+    html += '<button type="button" class="kbtn' + (i === 0 ? " kbtn-on" : "") + '"'
+      + ' data-box="' + id + '" data-i="' + i + '" onclick="showSiteTab(this)">'
+      + esc(st.filename || st.stem)
+      + (st.n_crowns != null ? ' <span class="muted">' + st.n_crowns + '</span>' : '')
+      + '</button>';
+  });
+  html += '</div>';
+  sites.forEach((st, i) => {
+    html += '<div class="site-pane" data-box="' + id + '"' + (i === 0 ? '' : ' hidden') + '>'
+      + sitePane(st, kind) + '</div>';
+  });
+  return html;
+}
+
+function sitePane(st, kind){
+  const label = st.filename || st.stem;
+  if(st.status === "failed")
+    return '<p class="hint"><span class="err">Detection failed on this orthomosaic</span>; '
+      + 'the run went on without it.'
+      + (st.error ? ' <span class="muted">' + esc(st.error) + '</span>' : '') + '</p>';
+  if(st.status === "no_crowns")
+    return '<p class="hint">No crowns were found on this orthomosaic, so it is left out '
+      + 'of the groups and exports.</p>'
+      + siteMap(st.overlay_url, "Detected crowns — " + label, "");
+  if(kind === "overlay")
+    return siteMap(st.overlay_url, "Detected crowns — " + label,
+                   "Every crown found on this orthomosaic, before any species is named. Click to enlarge.");
+  let html = siteMap(st.species_map_url, "Species map — " + label,
+                     "This orthomosaic's crowns, coloured by the species you named. Click to enlarge.");
+  const dl = [["KMZ", st.kmz_url], ["crowns GeoJSON", st.polygons_url]].filter(x => x[1]);
+  if(dl.length) html += '<div class="muted">' + esc(label) + ': '
+    + dl.map(([t, u]) => '<a href="' + escAttr(assetUrl(apiBase() + u)) + '" target="_blank">'
+                         + t + '</a>').join(" &middot; ")
+    + '</div>';
+  return html;
+}
+
+function showSiteTab(btn){
+  const box = btn.getAttribute("data-box"), i = +btn.getAttribute("data-i");
+  document.querySelectorAll('.kbtn[data-box="' + box + '"]')
+    .forEach(b => b.classList.toggle("kbtn-on", b === btn));
+  document.querySelectorAll('.site-pane[data-box="' + box + '"]')
+    .forEach((p, j) => { p.hidden = j !== i; });
+}
+
 // A run with no clusters to review (it failed, or is still analysing) can
 // still have its detection overlay, which says which site it was.
 function renderRunOverlayOnly(entry){
@@ -3672,11 +3789,13 @@ function renderRunOverlayOnly(entry){
   const words = RUN_WORDS[entry.state] || entry.state || "";
   box.innerHTML = '<div class="review"><div class="review-head">'
     + '<div class="review-title">Run ' + entry.run
-    + (entry.ortho ? " on " + esc(entry.ortho) : "")
+    + (runOrthoNames(entry) ? " on " + esc(runOrthoNames(entry)) : "")
     + ' <span class="muted">&middot; ' + esc(words) + '</span></div></div>'
-    + (entry.overlay_url
-        ? overlayMap(entry.run)
-        : '<p class="hint">This run has no pictures to show.</p>')
+    + ((entry.sites || []).length
+        ? siteTabs(entry.run, entry.sites, "overlay")
+        : entry.overlay_url
+          ? overlayMap(entry.run)
+          : '<p class="hint">This run has no pictures to show.</p>')
     + '</div>';
 }
 
@@ -3787,10 +3906,16 @@ async function finalize(){
 // What a finalized run produced: the species map, the downloads, the counts.
 function runResultsBody(r){
   const d=r.downloads||{};
-  let html=siteMap(r.species_map_url, "Species map \u2014 run "+r.run,
-                   "The detected crowns, coloured by the species you named. Click to enlarge.");
-  html+='<div style="margin-top:6px">downloads:</div><ul style="margin:4px 0">';
-  for(const [k,v] of Object.entries(d)) if(v) html+=`<li><a href="${escAttr(assetUrl(apiBase()+v))}" target="_blank">${k}</a></li>`;
+  const multi=(r.sites||[]).length>0;
+  let html=multi ? siteTabs(r.run, r.sites, "species")
+    : siteMap(r.species_map_url, "Species map \u2014 run "+r.run,
+              "The detected crowns, coloured by the species you named. Click to enlarge.");
+  html+='<div style="margin-top:6px">downloads'
+    +(multi?' <span class="muted">(the KMZ holds every orthomosaic, one folder each; the CSVs list all crowns, with a <code>site</code> column)</span>':'')
+    +':</div><ul style="margin:4px 0">';
+  // Shown per ortho in the tabs instead.
+  const perSite=multi?["species_map_png","polygons_geojson"]:[];
+  for(const [k,v] of Object.entries(d)) if(v && !perSite.includes(k)) html+=`<li><a href="${escAttr(assetUrl(apiBase()+v))}" target="_blank">${k}</a></li>`;
   html+='</ul>';
   const dist=r.species_distribution||{};
   if(Object.keys(dist).length) html+='<div>distribution: '+Object.entries(dist).map(([s,n])=>`${esc(s)}=${n}`).join(", ")+'</div>';
@@ -4016,7 +4141,7 @@ async function openProject(pid){
 
   // Clear everything from the previous project.
   PID = pid;
-  SELECTED_ORTHO = null; ORTHOS = []; ORTHO_USAGE = null; CURRENT_RUN = 1;
+  SELECTED_ORTHOS = []; ORTHO_EPSG = {}; ORTHOS = []; ORTHO_USAGE = null; CURRENT_RUN = 1;
   // A run number means nothing outside its project.
   ACTIVE_RUN = null;
   Object.keys(ORTHO_RUNS).forEach(k => delete ORTHO_RUNS[k]);

@@ -26,9 +26,10 @@ from app.api.v1.runs import (
     _apply_run_config,
     _classify_dispatch_error,
     _current_request_id,
-    _pin_run_ortho,
+    _pin_run_orthos,
     _validate_trigger_body,
-    resolve_run_ortho,
+    resolve_run_orthos,
+    run_ortho_epsg,
 )
 from app.core.logging import ERROR_CODES, get_logger
 from app.db.session import get_db
@@ -174,9 +175,11 @@ def drone_api(
         if body.action == "analyze":
             project = resolve_project(db, user, body.project_id, service=service)
             attribute_to_owner(request, project)
-            selected = resolve_run_ortho(project, body)
-            conf["ortho_id"] = selected.id
-            _pin_run_ortho(project, selected)
+            selected = resolve_run_orthos(project, body)
+            conf["ortho_id"] = selected[0].id
+            conf["ortho_ids"] = [o.id for o in selected]
+            _pin_run_orthos(project, selected,
+                            run_ortho_epsg(project, selected, body))
             db.add(project)
             db.commit()
 
@@ -308,7 +311,7 @@ def run_analyze(
     # Work out which orthomosaic this run uses before claiming the job, for the
     # same reason the trigger does: a bad selection must not leave a claimed job
     # behind. _apply_run_config below resolves it again and saves it.
-    resolve_run_ortho(project, body)
+    resolve_run_orthos(project, body)
 
     # Claim the run before changing any state or touching the run folder. This
     # endpoint computes inline, and _apply_run_config can archive the run and

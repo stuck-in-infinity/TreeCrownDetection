@@ -21,7 +21,8 @@ import torch
 
 # Downsampling the orthomosaic.
 
-def downsample_image(input_path, output_path, scale=1):
+def downsample_image(input_path, output_path, scale=1, assign_epsg=None):
+    """Resampled copy; ``assign_epsg`` sets a CRS if the source has none."""
     with rasterio.open(input_path) as src:
         new_width = int(src.width * scale)
         new_height = int(src.height * scale)
@@ -42,6 +43,8 @@ def downsample_image(input_path, output_path, scale=1):
             "width": new_width,
             "transform": transform
         })
+        if src.crs is None and assign_epsg:
+            profile["crs"] = rasterio.crs.CRS.from_epsg(int(assign_epsg))
 
         with rasterio.open(output_path, "w", **profile) as dst:
             dst.write(data)
@@ -173,8 +176,11 @@ def run_detectree2_pipeline(
     full_coverage=DEFAULT_FULL_COVERAGE,
     detections_per_image=DEFAULT_DETECTIONS_PER_IMAGE,
     min_size_test=DEFAULT_MIN_SIZE_TEST,
+    assign_epsg=None,
 ):
     """Detect tree crowns in one orthomosaic and write the results.
+
+    ``assign_epsg``: CRS for an ortho without one.
 
     ``detections_per_image`` and ``min_size_test`` are only used when this
     function builds its own predictor, that is when ``predictor`` is None. If a
@@ -201,7 +207,8 @@ def run_detectree2_pipeline(
 
     print("Step 0: Downsampling image...")
     scale = compute_downsample_scale(ortho_path, target_gsd_m=target_gsd_m)
-    ortho_path = downsample_image(ortho_path, os.path.join(output_dir, "downsampled.tif"), scale=scale)
+    ortho_path = downsample_image(ortho_path, os.path.join(output_dir, "downsampled.tif"),
+                                  scale=scale, assign_epsg=assign_epsg)
 
     # Step 1: cut the orthomosaic into tiles.
     print("Step 1: Tiling orthomosaic...")

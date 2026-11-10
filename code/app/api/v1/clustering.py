@@ -19,10 +19,11 @@ from app.core.storage import (
     detection_overlay_path,
     project_paths,
     relative_artifact_path,
+    run_stems,
 )
 from app.db import models
 from app.db.session import get_db
-from app.services import run_registry
+from app.services import run_orthos, run_registry
 from app.services.assets import analyze_asset_fields
 
 import crown_thumbs
@@ -147,6 +148,11 @@ def build_clustering_payload(request: Request, project, run: int | None = None,
         "files_url": _run_files_url(project, n),
         "per_k": per_k,
         "detection_overlay_url": overlay_rel,
+        # Multi-ortho runs only.
+        "sites": _sites(project.id, n, base),
+        "tsne_sites_url": (f"{base}/api/v1/project/clustering/tsne-sites.png{q}"
+                           if os.path.exists(os.path.join(cdir, "tsne_sites.png"))
+                           else None),
     }
     payload.update(analyze_asset_fields(project))
     return payload
@@ -185,6 +191,22 @@ def k_selection_png(run: int | None = None, project=Depends(get_project),
             "project_id": project.id,
             "hint": "this run produced no k-selection plot — re-run the analysis to "
                     "regenerate the clustering visuals",
+            "details": {"run": n}})
+    return FileResponse(f, media_type="image/png")
+
+@router.get("/projects/{project_id}/clustering/tsne-sites.png")
+@router.get("/project/clustering/tsne-sites.png")
+def tsne_sites_png(run: int | None = None, project=Depends(get_project),
+                   db=Depends(get_db)):
+    """t-SNE coloured by ortho (multi-ortho runs)."""
+    n = _resolve_run(db, project, run)
+    _require_review(db, project, n)
+    f = os.path.join(_clustering_dir(project, n), "tsne_sites.png")
+    if not os.path.exists(f):
+        raise HTTPException(404, {"code": "NOT_FOUND",
+            "message": f"Run {n} has no per-orthomosaic t-SNE plot.",
+            "project_id": project.id,
+            "hint": "this plot is only drawn for runs over more than one orthomosaic",
             "details": {"run": n}})
     return FileResponse(f, media_type="image/png")
 
@@ -315,16 +337,24 @@ def crown_png(image_name: str, run: int | None = None, k: int | None = None,
 @router.get("/projects/{project_id}/detection/overlay.png")
 @router.get("/project/detection/overlay.png")
 def overlay_png(run: int | None = None, preview: bool = False,
+                site: str | None = None,
                 project=Depends(get_project), db=Depends(get_db)):
     """The detected crowns drawn over the project's orthomosaic.
 
     Not gated on the run's state: a run that failed after detection still has
     this picture, and it is the one thing that says which site the run was.
     ``preview`` asks for the screen-sized JPEG, written beside the original on
-    first request; the original is served if that cannot be made.
+    first request; the original is served if that cannot be made. ``site``
+    picks the ortho; default the first.
     """
     n = _resolve_run(db, project, run)
-    f = detection_overlay_path(project.id, n)
+    if site and site not in run_stems(project.id, n):
+        raise HTTPException(404, {"code": "NOT_FOUND",
+            "message": f"Run {n} has no orthomosaic '{site}'.",
+            "project_id": project.id,
+            "hint": "use a site from the run's 'sites' list",
+            "details": {"run": n, "site": site}})
+    f = detection_overlay_path(project.id, n, site)
     if not f:
         raise HTTPException(404, {"code": "NOT_FOUND",
             "message": f"Run {n} has no detection overlay.",
@@ -341,6 +371,27 @@ def overlay_png(run: int | None = None, preview: bool = False,
     return FileResponse(f, media_type="image/png", headers=headers)
 
 # Helpers.
+def _sites(project_id: str, run: int, base: str) -> list[dict]:
+    """Per-ortho detection info; [] for one ortho."""
+    stems = run_stems(project_id, run)
+    if len(stems) < 2:
+        return []
+    status = run_orthos.read_status(project_paths(project_id, run)["work"])
+    out = []
+    for stem in stems:
+        st = status.get(stem) or {}
+        out.append({
+            "stem": stem,
+            "filename": st.get("filename"),
+            "status": st.get("status"),
+            "n_crowns": st.get("n_crowns"),
+            "error": st.get("error"),
+            "overlay_url": (
+                f"{base}/api/v1/project/detection/overlay.png?run={run}&site={stem}"
+                if detection_overlay_path(project_id, run, stem) else None),
+        })
+    return out
+
 def _run_files_url(project, run: int) -> str | None:
     """FileBrowser link to one run's folder, or None when it is switched off."""
     try:

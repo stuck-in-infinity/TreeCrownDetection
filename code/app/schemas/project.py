@@ -98,6 +98,10 @@ class AnalyzeTrigger(BaseModel):
     # ``_apply_run_config`` saves it onto ``project.params``, so the worker and
     # the run history both record which orthomosaic was used.
     ortho_id: str | None = None
+    # Several orthos, processed separately; wins over ``ortho_id``.
+    ortho_ids: list[str] | None = None
+    # {ortho_id: epsg} for orthos with no CRS.
+    ortho_epsg: dict[str, int] | None = None
     # Which run these settings were copied from, when the user opened an older
     # run and pressed Run analysis. Recorded so the run list can say where a
     # run came from; it selects nothing and changes no behaviour.

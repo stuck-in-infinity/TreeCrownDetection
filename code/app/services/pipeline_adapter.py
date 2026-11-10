@@ -75,6 +75,8 @@ def build_config(project, run: int | None = None) -> types.SimpleNamespace:
     # Steps 2 and 4: species labels and export.
     cfg.CHOSEN_K = params.get("chosen_k", 2)
     cfg.SOURCE_EPSG = project.source_epsg or 32643
+    # {stem: epsg} for orthos without a CRS.
+    cfg.ORTHO_EPSG = dict(params.get("ortho_epsg") or {})
     cfg.COLOR_PALETTE = COLOR_PALETTE
 
     return cfg

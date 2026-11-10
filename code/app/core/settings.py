@@ -145,6 +145,7 @@ class Settings(BaseSettings):
     max_upload_mb: int = 8192
     project_quota_gb: float = 5          # TCP_PROJECT_QUOTA_GB, 0 disables
     max_orthos_per_project: int = 10     # TCP_MAX_ORTHOS_PER_PROJECT, 0 disables
+    max_orthos_per_run: int = 5          # TCP_MAX_ORTHOS_PER_RUN, 0 disables
 
     # Auth (optional). api_key guards the frontend endpoints; clients must then
     # send ``X-API-Key: <api_key>``. compute_token is a separate credential for

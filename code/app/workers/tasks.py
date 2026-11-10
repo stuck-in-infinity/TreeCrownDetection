@@ -26,11 +26,12 @@ from datetime import datetime
 # inside the tasks. setdefault so an explicit env override still wins.
 os.environ.setdefault("TQDM_DISABLE", "1")
 
-from app.core.failures import classify as classify_failure
+from app.core.failures import RunTimeout, classify as classify_failure
 from app.core.logging import get_logger, naive_now, with_context
 from app.core.storage import ensure_project_dirs, project_paths, reset_dirs
 from app.db import models
 from app.db.session import SessionLocal
+from app.services import run_orthos
 from app.services.pipeline_adapter import build_config
 from app.workers.celery_app import celery_app
 
@@ -252,6 +253,11 @@ def job_a_analyze(self, project_id: str, job_id: str, run: int | None = None):
              "step2_output", "step3_output", "step4_output"],
             run,
         )
+        for stale in (run_orthos.STATUS_FILE, COMBINED_CROWNS):
+            try:
+                os.remove(os.path.join(paths["work"], stale))
+            except FileNotFoundError:
+                pass
 
         logf = open(os.path.join(paths["logs"], "analyze.log"), "a", buffering=1)
         _set_job(db, job, state="RUNNING", started_at=naive_now(),
@@ -265,7 +271,7 @@ def job_a_analyze(self, project_id: str, job_id: str, run: int | None = None):
             import predict
             import tree_crown_pipeline as tcp
 
-            # Step 0: detection, on THIS RUN'S ortho
+            # Step 0: detection, per ortho; never mosaicked.
             _set_job(db, job, current_stage="detecting", progress=0.05)
             ortho_dir = paths["input_ortho"]
             stems = _run_ortho_stems(project, ortho_dir)
@@ -278,31 +284,68 @@ def job_a_analyze(self, project_id: str, job_id: str, run: int | None = None):
                 detections_per_image=cfg.DETECTIONS_PER_IMAGE,
                 min_size_test=cfg.MIN_SIZE_TEST,
             )
-            for stem in stems:
-                src_ortho = _find_ortho(ortho_dir, stem)
-                det_out = os.path.join(paths["detectree"], stem)
-                gj, _overlay, _downsampled = predict.run_detectree2_pipeline(
-                    ortho_path=src_ortho,
-                    predictor=predictor,
-                    output_dir=det_out,
-                    tile_size=cfg.TILE_SIZE,
-                    buffer=cfg.BUFFER,
-                    iou_threshold=cfg.IOU_THRESHOLD,
-                    conf_threshold=cfg.CONF_THRESHOLD,
-                    area_min=cfg.AREA_MIN,
-                    area_max=cfg.AREA_MAX,
-                    full_coverage=cfg.FULL_COVERAGE,
-                )
-                # Feed Step 1 the FULL-RESOLUTION ortho, not the downsampled
-                # copy detection ran on. `_downsampled` exists only because
-                # Detectree2 wants a consistent ground sample distance; cropping
-                # from it would hand DINOv2 a blurrier crown than the survey
-                # actually recorded, and end_to_end_pipeline.py (the CLI running
-                # the same pipeline) has always used the original here. The two
-                # rasters share a CRS and extent, so the same polygons cut the
-                # same ground either way, only the pixel detail differs.
-                _place_run_ortho(src_ortho, os.path.join(paths["ortho"], f"{stem}.tif"))
-                shutil.copy(gj, os.path.join(paths["polygons"], f"{stem}.geojson"))
+            filenames = {o.stem: o.filename for o in (project.orthos or [])}
+            status, first_exc = [], None
+            for i, stem in enumerate(stems):
+                if len(stems) > 1:
+                    _set_job(db, job, current_stage=f"detecting {i + 1}/{len(stems)}",
+                             progress=0.05 + 0.30 * i / len(stems))
+                    print(f"\n=== Orthomosaic {i + 1}/{len(stems)}: {stem} ===")
+                row = {"stem": stem, "filename": filenames.get(stem),
+                       "status": "ok", "n_crowns": 0, "error": None}
+                try:
+                    src_ortho = _find_ortho(ortho_dir, stem)
+                    det_out = os.path.join(paths["detectree"], stem)
+                    gj, _overlay, _downsampled = predict.run_detectree2_pipeline(
+                        ortho_path=src_ortho,
+                        predictor=predictor,
+                        output_dir=det_out,
+                        tile_size=cfg.TILE_SIZE,
+                        buffer=cfg.BUFFER,
+                        iou_threshold=cfg.IOU_THRESHOLD,
+                        conf_threshold=cfg.CONF_THRESHOLD,
+                        area_min=cfg.AREA_MIN,
+                        area_max=cfg.AREA_MAX,
+                        full_coverage=cfg.FULL_COVERAGE,
+                        assign_epsg=cfg.ORTHO_EPSG.get(stem) or cfg.SOURCE_EPSG,
+                    )
+                    row["n_crowns"] = _count_features(gj)
+                    if row["n_crowns"]:
+                        # Feed Step 1 the FULL-RESOLUTION ortho, not the
+                        # downsampled copy detection ran on. `_downsampled`
+                        # exists only because Detectree2 wants a consistent
+                        # ground sample distance; cropping from it would hand
+                        # DINOv2 a blurrier crown than the survey actually
+                        # recorded, and end_to_end_pipeline.py (the CLI running
+                        # the same pipeline) has always used the original here.
+                        # The two rasters share a CRS and extent, so the same
+                        # polygons cut the same ground either way, only the
+                        # pixel detail differs.
+                        _place_run_ortho(src_ortho, os.path.join(paths["ortho"], f"{stem}.tif"))
+                        shutil.copy(gj, os.path.join(paths["polygons"], f"{stem}.geojson"))
+                    else:
+                        row["status"] = "no_crowns"
+                        print(f"No crowns detected in {stem}; it is left out of the run.")
+                except RunTimeout:
+                    raise
+                except Exception as e:
+                    # Skip a failed ortho; a one-ortho run still fails.
+                    if len(stems) == 1:
+                        raise
+                    first_exc = first_exc or e
+                    row["status"] = "failed"
+                    row["error"] = f"{type(e).__name__}: {e}"
+                    print(f"Orthomosaic {stem} failed, continuing without it:")
+                    traceback.print_exc()
+                status.append(row)
+                run_orthos.write_status(paths["work"], status)
+
+            if not any(r["status"] == "ok" for r in status):
+                if first_exc is not None:
+                    raise first_exc
+                raise RuntimeError("No tree crowns were detected in any orthomosaic.")
+            if sum(r["status"] == "ok" for r in status) > 1:
+                _write_combined_crowns(paths, cfg.ORTHO_EPSG)
 
             # Step 1: crop: features: cluster: analyse: t-SNE
             _set_job(db, job, current_stage="cropping", progress=0.35)
@@ -463,8 +506,9 @@ def _run_ortho_stems(project, ortho_dir: str) -> list[str]:
 
     The fallbacks exist for runs that predate the pin, and only for those:
 
+    * ``ortho_stems`` lists several: those whose file exists.
     * pin present and its file exists: that one file. This is the only path a
-      run triggered through the current API can take.
+      one-ortho run triggered through the current API can take.
     * no pin, exactly one registered ortho: that one. Every project created
       before this change, including one mid-run when the code was deployed.
     * no pin and several: every registered ortho, the pre-library behaviour.
@@ -482,6 +526,15 @@ def _run_ortho_stems(project, ortho_dir: str) -> list[str]:
         )
 
     params = dict(getattr(project, "params", None) or {})
+    listed = [o["stem"] for o in run_orthos.pinned(params) if o["stem"]]
+    if len(listed) > 1:
+        present = [st for st in listed if _present(st)]
+        if len(present) < len(listed):
+            log.warning("run orthos missing on disk for project=%s: %s",
+                        getattr(project, "id", None),
+                        sorted(set(listed) - set(present)))
+        if present:
+            return present
     pinned = params.get("ortho_stem")
     if pinned and _present(pinned):
         return [pinned]
@@ -505,6 +558,39 @@ def _run_ortho_stems(project, ortho_dir: str) -> list[str]:
         for f in os.listdir(ortho_dir)
         if f.lower().endswith((".tif", ".tiff"))
     )
+
+#: Multi-ortho runs: all crowns in WGS84, at the run root (gallery download).
+COMBINED_CROWNS = "crowns.geojson"
+
+def _write_combined_crowns(paths: dict, epsg_by_stem: dict) -> None:
+    """Best effort; failures are logged only."""
+    try:
+        import geopandas as gpd
+        import pandas as pd
+
+        parts = []
+        for f in sorted(os.listdir(paths["polygons"])):
+            if not f.endswith(".geojson"):
+                continue
+            stem = os.path.splitext(f)[0]
+            g = gpd.read_file(os.path.join(paths["polygons"], f))
+            if g.crs is None:
+                if not epsg_by_stem.get(stem):
+                    continue
+                g = g.set_crs(epsg=int(epsg_by_stem[stem]))
+            g = g.to_crs(epsg=4326)
+            g["site"] = stem
+            parts.append(g)
+        if parts:
+            out = gpd.GeoDataFrame(pd.concat(parts, ignore_index=True),
+                                   geometry="geometry", crs="EPSG:4326")
+            out.to_file(os.path.join(paths["work"], COMBINED_CROWNS), driver="GeoJSON")
+    except Exception:
+        log.warning("combined crowns layer not written", exc_info=True)
+
+def _count_features(geojson_path: str) -> int:
+    with open(geojson_path) as f:
+        return len(json.load(f).get("features") or [])
 
 def _place_run_ortho(src: str, dst: str) -> None:
     """Give the run its own view of the full-resolution orthomosaic at ``dst``.

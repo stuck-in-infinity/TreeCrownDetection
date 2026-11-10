@@ -339,6 +339,10 @@ ERROR_CODES = {
     # 400: the project holds several orthomosaics and the caller did not say
     # which one this run should use.
     "ORTHO_SELECTION_REQUIRED": "ORTHO_SELECTION_REQUIRED",
+    # 400: more orthos than settings.max_orthos_per_run.
+    "TOO_MANY_ORTHOS": "TOO_MANY_ORTHOS",
+    # 400: multi-ortho run, an ortho has no CRS and no EPSG.
+    "ORTHO_EPSG_REQUIRED": "ORTHO_EPSG_REQUIRED",
     # 409: the orthomosaic backs a run that already produced results, so the
     # file cannot be deleted.
     "ORTHO_IN_USE": "ORTHO_IN_USE",

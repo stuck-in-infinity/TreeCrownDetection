@@ -155,25 +155,39 @@ def step1_crop_crowns(config):
     dir_crowns = os.path.join(config.STEP1_OUTPUT, 'crowns')
     make_dirs(dir_crowns)
     
-    # Open every orthomosaic, since a crown may come from any of them.
-    ortho_srcs = []
-    for f in os.listdir(config.ORTHO_FOLDER):
-        if f.lower().endswith('.tif'):
-            ortho_srcs.append(rasterio.open(os.path.join(config.ORTHO_FOLDER, f)))
-    print(f'Orthomosaics found: {len(ortho_srcs)}')
-    
+    ortho_paths = sorted(
+        os.path.join(config.ORTHO_FOLDER, f)
+        for f in os.listdir(config.ORTHO_FOLDER)
+        if f.lower().endswith(('.tif', '.tiff'))
+    )
+    print(f'Orthomosaics found: {len(ortho_paths)}')
+
     total_saved = total_failed = 0
-    
+
     for gj_file in sorted(os.listdir(config.POLY_FOLDER)):
         if not gj_file.endswith('.geojson'):
             continue
-        
+
         prefix = os.path.splitext(gj_file)[0]
         gdf = gpd.read_file(os.path.join(config.POLY_FOLDER, gj_file))
         gdf['_cid'] = crown_id_from_gdf(gdf)
         gdf = gdf.sort_values('_cid').reset_index(drop=True)
         print(f'\n  {gj_file}  ({len(gdf)} crowns)')
-        
+
+        # Crop from the matching ortho only; other CRSs can overlap numerically.
+        own = [p for p in ortho_paths
+               if os.path.splitext(os.path.basename(p))[0] == prefix]
+        if not own and len(ortho_paths) == 1:
+            own = ortho_paths          # CLI: polygons/crowns.geojson + one ortho
+        if not own:
+            print(f'  no ortho named {prefix}.tif, skipping {gj_file}')
+            total_failed += len(gdf)
+            continue
+        ortho_srcs = [rasterio.open(own[0])]
+        if gdf.crs is not None and ortho_srcs[0].crs is not None \
+                and gdf.crs != ortho_srcs[0].crs:
+            gdf = gdf.to_crs(ortho_srcs[0].crs)
+
         for _, row in tqdm(gdf.iterrows(), total=len(gdf), desc=prefix):
             cid = int(row['_cid'])
             out_name = f'{prefix}_{cid:03d}.tif'
@@ -204,10 +218,10 @@ def step1_crop_crowns(config):
                 total_saved += 1
             else:
                 total_failed += 1
-    
-    for src in ortho_srcs:
-        src.close()
-    
+
+        for src in ortho_srcs:
+            src.close()
+
     print(f'\n Cropping complete — saved: {total_saved}  failed: {total_failed}')
     print(f'   Crown TIFFs in: {dir_crowns}')
     return dir_crowns
@@ -580,7 +594,29 @@ def step1_tsne(config, X, names_df, all_cluster_labels, dir_cluster):
         fig.savefig(os.path.join(dir_cluster, f'tsne_k{k}.png'),
                    dpi=150, bbox_inches='tight')
         plt.close(fig)
-    
+
+    # Several orthos: same points coloured by ortho.
+    sites = tsne_df['image_name'].str.rsplit('_', n=1).str[0]
+    if sites.nunique() > 1:
+        names = sorted(sites.unique())
+        colors = cluster_colors(len(names))
+        fig, ax = plt.subplots(figsize=(8, 6))
+        ax.scatter(tsne_df['x'], tsne_df['y'],
+                   c=[colors[names.index(s)] for s in sites],
+                   s=20, alpha=0.7, linewidths=0)
+        ax.legend(handles=[mpatches.Patch(color=colors[i], label=n)
+                           for i, n in enumerate(names)],
+                  bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=9,
+                  title='Orthomosaic')
+        ax.set_title(f't-SNE by orthomosaic  (n={len(tsne_df)} crowns)',
+                     fontsize=13, fontweight='bold')
+        ax.set_xlabel('t-SNE 1')
+        ax.set_ylabel('t-SNE 2')
+        fig.tight_layout()
+        fig.savefig(os.path.join(dir_cluster, 'tsne_sites.png'),
+                    dpi=150, bbox_inches='tight')
+        plt.close(fig)
+
     print(' Step 1 complete.')
 
 # Step 2: turn the cluster names into species labels on every crown.
@@ -802,14 +838,18 @@ def step3_validate(config):
 
 # Step 4: export the species map as a KMZ for Google Earth.
 
-def load_species_polygons(poly_folder, master_path):
+def load_species_polygons(poly_folder, master_path, stem=None, epsg_by_stem=None):
     """Every crown polygon of a run with its species attached.
 
     Shared by the KMZ export and the species-map picture, which the API also
     draws on demand for runs finalized before the picture existed.
+
+    ``stem`` picks one ortho. Several files are reprojected to WGS84 before
+    concat. ``epsg_by_stem``: CRS for files that have none.
     """
     # Read the master table written by Step 2.
     master_df = pd.read_csv(master_path)
+    epsg_by_stem = epsg_by_stem or {}
 
     # Read the crown polygons.
     all_polys = []
@@ -818,16 +858,31 @@ def load_species_polygons(poly_folder, master_path):
             continue
 
         prefix = os.path.splitext(gj_file)[0]
+        if stem is not None and prefix != stem:
+            continue
         g = gpd.read_file(os.path.join(poly_folder, gj_file))
+        if g.crs is None and epsg_by_stem.get(prefix):
+            g = g.set_crs(epsg=int(epsg_by_stem[prefix]))
         g['_cid'] = crown_id_from_gdf(g)
         g['image_name'] = g['_cid'].apply(lambda x: f'{prefix}_{int(x):03d}.tif')
+        g['site'] = prefix
 
         if 'Confidence_score' in g.columns:
             g = g.rename(columns={'Confidence_score': 'confidence_score'})
 
         all_polys.append(g)
 
-    gdf_all = pd.concat(all_polys, ignore_index=True)
+    if not all_polys:
+        raise FileNotFoundError(f'No crown polygons in {poly_folder}'
+                                + (f' for {stem}' if stem else ''))
+    if len(all_polys) > 1:
+        if any(g.crs is None for g in all_polys):
+            raise ValueError('a polygon file has no CRS; give its ortho an EPSG')
+        all_polys = [g.to_crs(epsg=4326) for g in all_polys]
+        gdf_all = gpd.GeoDataFrame(pd.concat(all_polys, ignore_index=True),
+                                   geometry='geometry', crs='EPSG:4326')
+    else:
+        gdf_all = all_polys[0]
 
     # Attach each polygon's species.
     gdf_all = gdf_all.merge(
@@ -837,8 +892,83 @@ def load_species_polygons(poly_folder, master_path):
     gdf_all['species'] = gdf_all['species'].fillna('unlabelled')
     return gdf_all
 
+def _species_order(species):
+    """Alphabetical, ``unlabelled`` last."""
+    names = sorted(set(species))
+    if 'unlabelled' in names:
+        names.remove('unlabelled')
+        names.append('unlabelled')
+    return names
+
+def _write_kmz(gdf_wgs, kmz_path, species_list, palette, by_site=False):
+    """Write one KMZ; ``by_site`` adds a folder per ortho."""
+    species_color_idx = {sp: i % len(palette) for i, sp in enumerate(species_list)}
+
+    kml = simplekml.Kml()
+    kml.document.name = 'Tree Crown Species Map'
+
+    kml_styles = {}
+    for sp in species_list:
+        style = simplekml.Style()
+        style.polystyle.color = palette[species_color_idx[sp]]
+        style.polystyle.fill = 1
+        style.polystyle.outline = 1
+        style.linestyle.color = 'ff000000'
+        style.linestyle.width = 1
+        kml_styles[sp] = style
+
+    def species_folders(parent):
+        return {sp: parent.newfolder(name=sp.replace('_', ' ').title())
+                for sp in species_list}
+
+    if by_site:
+        sites = sorted(gdf_wgs['site'].dropna().unique())
+        kml_folders = {site: species_folders(kml.newfolder(name=site)) for site in sites}
+    else:
+        kml_folders = {None: species_folders(kml)}
+
+    added = 0
+    for _, row in tqdm(gdf_wgs.iterrows(), total=len(gdf_wgs), desc='Building KMZ'):
+        geom = row.geometry
+        if geom is None or geom.is_empty:
+            continue
+        if geom.geom_type == 'MultiPolygon':
+            geom = max(geom.geoms, key=lambda g: g.area)
+        if geom.geom_type != 'Polygon':
+            continue
+
+        sp = row.get('species', 'unlabelled')
+        polygon_id = row.get('polygon_id', 'NA')
+        site = row.get('site') if by_site else None
+
+        folders = kml_folders[site]
+        folder = folders.get(sp, folders.get('unlabelled'))
+        style = kml_styles.get(sp, kml_styles.get('unlabelled'))
+
+        pol = folder.newpolygon(
+            name=f'{sp} | {polygon_id}',
+            outerboundaryis=list(geom.exterior.coords)
+        )
+        pol.style = style
+        desc = f'<b>Polygon ID:</b> {polygon_id}<br><b>Species:</b> {sp}'
+        if by_site:
+            desc += f'<br><b>Site:</b> {site}'
+        pol.description = desc
+        added += 1
+
+    kml_path = os.path.splitext(kmz_path)[0] + '.kml'
+    kml.save(kml_path)
+    with zipfile.ZipFile(kmz_path, 'w', zipfile.ZIP_DEFLATED) as kmz:
+        kmz.write(kml_path, 'doc.kml')
+    os.remove(kml_path)
+    print(f'  {kmz_path}: {added} polygons, {os.path.getsize(kmz_path) / 1e6:.1f} MB')
+
 def step4_export_kmz(config):
-    """Write the species map as a KMZ that Google Earth can open."""
+    """Write the species map as a KMZ that Google Earth can open.
+
+    Several orthos: per-ortho KMZ and map under ``sites/<stem>/``, plus a
+    combined ``species_map.kmz``.
+    """
     print('\n' + '='*70)
     print('STEP 4: KMZ EXPORT')
     print('='*70)
@@ -849,90 +979,46 @@ def step4_export_kmz(config):
     make_dirs(config.STEP4_OUTPUT)
 
     master_path = os.path.join(config.STEP2_OUTPUT, 'crown_master.csv')
-    gdf_all = load_species_polygons(config.POLY_FOLDER, master_path)
+    epsg_by_stem = dict(getattr(config, 'ORTHO_EPSG', None) or {})
+    stems = sorted(os.path.splitext(f)[0] for f in os.listdir(config.POLY_FOLDER)
+                   if f.endswith('.geojson'))
 
-    # A picture of the same map for the browser, which cannot open a KMZ. Drawn
-    # before the reprojection below: the raster is in the polygons' own CRS.
-    map_images.render_species_map(
-        gdf_all, map_images.find_base_raster(config.WORKDIR),
-        os.path.join(config.STEP4_OUTPUT, 'species_map.png'), config.COLOR_PALETTE,
-        overwrite=True)
+    # Each ortho in its own CRS; fallback ortho EPSG, then project EPSG.
+    per_site = {}
+    for stem in stems:
+        g = load_species_polygons(config.POLY_FOLDER, master_path, stem=stem,
+                                  epsg_by_stem=epsg_by_stem)
+        if g.crs is None:
+            g = g.set_crs(epsg=config.SOURCE_EPSG)
+        per_site[stem] = g
+
+    species_list = _species_order(
+        sp for g in per_site.values() for sp in g['species'])
+    multi = len(per_site) > 1
+
+    for stem, g in per_site.items():
+        out_dir = map_images.site_dir(config.STEP4_OUTPUT, stem) if multi \
+            else config.STEP4_OUTPUT
+        # PNG for the browser, on this ortho's raster.
+        map_images.render_species_map(
+            g, map_images.find_base_raster(config.WORKDIR, stem if multi else None),
+            os.path.join(out_dir, 'species_map.png'), config.COLOR_PALETTE,
+            overwrite=True, all_species=species_list)
+        if multi:
+            _write_kmz(g.to_crs(epsg=4326), os.path.join(out_dir, 'species_map.kmz'),
+                       species_list, config.COLOR_PALETTE)
 
     # KML needs latitude and longitude, so reproject to WGS84.
-    if gdf_all.crs is None:
-        gdf_all = gdf_all.set_crs(epsg=config.SOURCE_EPSG)
-    gdf_wgs = gdf_all.to_crs(epsg=4326)
-    
+    gdf_wgs = pd.concat([g.to_crs(epsg=4326) for g in per_site.values()],
+                        ignore_index=True)
+    gdf_wgs = gpd.GeoDataFrame(gdf_wgs, geometry='geometry', crs='EPSG:4326')
+
+    print(f'  Orthomosaics: {len(per_site)}')
     print(f'  Total polygons: {len(gdf_wgs)}')
     print(f'  Labeled: {gdf_wgs["species"].ne("unlabelled").sum()}')
-    
-    # Build the KML, one colour per species.
-    species_list = sorted(gdf_wgs['species'].unique())
-    if 'unlabelled' in species_list:
-        species_list.remove('unlabelled')
-        species_list.append('unlabelled')
-    
-    species_color_idx = {sp: i % len(config.COLOR_PALETTE) for i, sp in enumerate(species_list)}
-    
-    kml = simplekml.Kml()
-    kml.document.name = 'Tree Crown Species Map'
-    
-    kml_folders = {}
-    kml_styles = {}
-    
-    for sp in species_list:
-        ci = species_color_idx[sp]
-        color = config.COLOR_PALETTE[ci]
-        
-        style = simplekml.Style()
-        style.polystyle.color = color
-        style.polystyle.fill = 1
-        style.polystyle.outline = 1
-        style.linestyle.color = 'ff000000'
-        style.linestyle.width = 1
-        
-        kml_styles[sp] = style
-        folder_name = sp.replace('_', ' ').title()
-        kml_folders[sp] = kml.newfolder(name=folder_name)
-    
-    added = 0
-    for _, row in tqdm(gdf_wgs.iterrows(), total=len(gdf_wgs), desc='Building KMZ'):
-        geom = row.geometry
-        if geom is None or geom.is_empty:
-            continue
-        if geom.geom_type == 'MultiPolygon':
-            geom = max(geom.geoms, key=lambda g: g.area)
-        if geom.geom_type != 'Polygon':
-            continue
-        
-        sp = row.get('species', 'unlabelled')
-        polygon_id = row.get('polygon_id', 'NA')
-        
-        folder = kml_folders.get(sp, kml_folders.get('unlabelled'))
-        style = kml_styles.get(sp, kml_styles.get('unlabelled'))
-        
-        pol = folder.newpolygon(
-            name=f'{sp} | {polygon_id}',
-            outerboundaryis=list(geom.exterior.coords)
-        )
-        pol.style = style
-        pol.description = f'<b>Polygon ID:</b> {polygon_id}<br><b>Species:</b> {sp}'
-        added += 1
-    
-    print(f'  Polygons added: {added}')
-    
-    # Save the KMZ.
-    kml_path = os.path.join(config.STEP4_OUTPUT, 'doc.kml')
+
     kmz_path = os.path.join(config.STEP4_OUTPUT, 'species_map.kmz')
-    
-    kml.save(kml_path)
-    with zipfile.ZipFile(kmz_path, 'w', zipfile.ZIP_DEFLATED) as kmz:
-        kmz.write(kml_path, 'doc.kml')
-    os.remove(kml_path)
-    
-    size_mb = os.path.getsize(kmz_path) / 1e6
-    print(f'\n KMZ saved: {kmz_path}')
-    print(f'   File size: {size_mb:.1f} MB')
+    _write_kmz(gdf_wgs, kmz_path, species_list, config.COLOR_PALETTE, by_site=multi)
     print(f'   → Open in Google Earth Pro or earth.google.com')
 
 # Running the whole pipeline.

@@ -26,7 +26,7 @@ from app.core.storage import delete_project_dir, ensure_project_dirs, project_pa
 from app.db import models
 from app.db.session import get_db
 from app.schemas.project import OrthoFromUrl, ProjectCreate, ProjectUpdate
-from app.services import drive_download
+from app.services import drive_download, run_orthos
 from app.services.project_service import (
     USED_RUN_STATES,
     archive_current_run,
@@ -554,6 +554,7 @@ def list_orthomosaics(project=Depends(get_project), db: Session = Depends(get_db
             "uploaded_at": uploaded_at,
             "missing": path is None,
             "in_use": bool(refs & {o.id, o.stem, o.filename}),
+            "bounds_wgs84": _bounds_wgs84(path),
         })
     quota = _quota_bytes()
     return {
@@ -836,15 +837,14 @@ def _run_ortho_refs(project) -> set[str]:
             val = entry.get(key)
             if val:
                 refs.add(str(val))
+        # Multi-ortho runs keep their lists in params.
+        refs.update(run_orthos.refs(entry.get("params")))
     if project.state in ("AWAITING_LABELS", "LABELS_SUBMITTED", "COMPLETED"):
         params = dict(project.params or {})
-        for key in ("ortho_id", "ortho_stem"):
-            val = params.get(key)
-            if val:
-                refs.add(str(val))
+        refs.update(run_orthos.refs(params))
         # A run started before orthomosaic selection existed recorded nothing.
         # On a project holding one orthomosaic, that run must have used it.
-        if not params.get("ortho_id") and not params.get("ortho_stem"):
+        if not run_orthos.refs(params):
             if len(project.orthos) == 1:
                 o = project.orthos[0]
                 refs.update({o.id, o.stem, o.filename})
@@ -1018,6 +1018,23 @@ def _raster_meta(path: str) -> dict:
             }
     except Exception:
         return {}
+
+
+def _bounds_wgs84(path: str | None) -> list[float] | None:
+    """[w, s, e, n] in WGS84 from the header; None without a CRS."""
+    if not path:
+        return None
+    try:
+        import rasterio
+        from rasterio.warp import transform_bounds
+
+        with rasterio.open(path) as src:
+            if src.crs is None:
+                return None
+            b = transform_bounds(src.crs, "EPSG:4326", *src.bounds, densify_pts=5)
+        return [round(v, 6) for v in b]
+    except Exception:
+        return None
 
 
 _EPSG_RX = re.compile(r"EPSG:(\d+)", re.IGNORECASE)

@@ -25,7 +25,8 @@ from app.db import models
 from app.db.session import get_db
 from app.schemas.project import AnalyzeTrigger, FinalizeTrigger
 from app.services.airflow_client import airflow_enabled
-from app.services import run_registry
+from app.core.settings import settings
+from app.services import run_orthos, run_registry
 from app.services.project_service import USED_RUN_STATES, archive_current_run
 from app.services.run_dispatch import dispatch_analyze, dispatch_finalize
 from app.services.state import transition_if
@@ -148,14 +149,15 @@ def _validate_trigger_body(project, body) -> None:
         _validate_param_overrides(body.params)
         _validate_merged_params(project, body.params)
 
-def resolve_run_ortho(project, body):
-    """Decide which orthomosaic this run uses, or raise the right 4xx.
+def resolve_run_orthos(project, body) -> list:
+    """Decide which orthomosaics this run uses, or raise the right 4xx.
 
     Three cases, in the order the spec states them:
 
-    * ``ortho_id`` given: it must belong to THIS project and its file must be
-      on disk. A foreign or unknown id is 404 ORTHO_NOT_FOUND, not 403: the
-      caller already owns the project, so the id is simply not one of its own.
+    * ``ortho_ids`` / ``ortho_id`` given: each must belong to THIS project and
+      its file must be on disk. A foreign or unknown id is 404 ORTHO_NOT_FOUND,
+      not 403: the caller already owns the project, so the id is simply not one
+      of its own. Over TCP_MAX_ORTHOS_PER_RUN is 400.
     * omitted, exactly one ortho: that one. This is what keeps every existing
       project, every existing frontend build and every script working unchanged.
     * omitted, several orthos: 400 ORTHO_SELECTION_REQUIRED, whose ``details``
@@ -176,7 +178,12 @@ def resolve_run_ortho(project, body):
             "hint": "upload a GeoTIFF in step 2 before starting a run",
         })
 
-    requested = getattr(body, "ortho_id", None) if body else None
+    requested = []
+    if body is not None:
+        requested = list(getattr(body, "ortho_ids", None) or [])
+        if not requested and getattr(body, "ortho_id", None):
+            requested = [body.ortho_id]
+    requested = list(dict.fromkeys(r for r in requested if r))
     from_pin = False
     if not requested and body is not None and getattr(body, "execution_id", None):
         # Orchestrator callback (Airflow re-entering /project/drone_api or
@@ -185,44 +192,101 @@ def resolve_run_ortho(project, body):
         # project.params. Deliberately NOT done for a plain user request: there,
         # silently reusing the previous run's ortho is exactly the ambiguity the
         # 400 below exists to prevent.
-        requested = (dict(project.params or {})).get("ortho_id")
+        requested = [o["id"] for o in run_orthos.pinned(project.params) if o["id"]]
         from_pin = bool(requested)
     if requested:
-        match = next((o for o in orthos if o.id == requested), None)
-        if match is not None:
-            _assert_ortho_usable(project, match)
-            return match
-        if not from_pin:
-            log.warning("404 ORTHO_NOT_FOUND project=%s ortho=%s", project.id, requested)
+        by_id = {o.id: o for o in orthos}
+        missing = [r for r in requested if r not in by_id]
+        if missing and not from_pin:
+            log.warning("404 ORTHO_NOT_FOUND project=%s ortho=%s", project.id, missing)
             raise HTTPException(404, {
                 "code": ERROR_CODES["ORTHO_NOT_FOUND"],
-                "message": "The selected orthomosaic does not belong to this project.",
+                "message": "A selected orthomosaic does not belong to this project.",
                 "project_id": project.id,
-                "hint": ("reload the orthomosaic list in step 2 and tick one of its "
-                     "entries — this one belongs to a different project"),
+                "hint": ("reload the orthomosaic list in step 2 and tick its "
+                         "entries again — one of them is not in this project"),
+                "details": {"missing": missing},
             })
         # A pin whose ortho has since been deleted: fall through to the normal
         # rules rather than 404-ing a callback the user cannot influence.
+        picked = [by_id[r] for r in requested if r in by_id]
+        if picked:
+            _check_ortho_count(project, picked)
+            for o in picked:
+                _assert_ortho_usable(project, o)
+            run_ortho_epsg(project, picked, body)
+            return picked
 
     if len(orthos) == 1:
         only = orthos[0]
         _assert_ortho_usable(project, only)
-        return only
+        return [only]
 
     log.warning("400 ORTHO_SELECTION_REQUIRED project=%s n=%s", project.id, len(orthos))
     raise HTTPException(400, {
         "code": ERROR_CODES["ORTHO_SELECTION_REQUIRED"],
         "message": (
-            f"This project holds {len(orthos)} orthomosaics — say which one this "
+            f"This project holds {len(orthos)} orthomosaics — say which ones this "
             f"run should use."
         ),
         "project_id": project.id,
-        "hint": ("tick which orthomosaic this run should use in step 2 — the "
+        "hint": ("tick the orthomosaics this run should use in step 2 — the "
                      "choices are listed under details.orthos below"),
         "details": {"orthos": [
             {"id": o.id, "stem": o.stem, "filename": o.filename} for o in orthos
         ]},
     })
+
+def _check_ortho_count(project, picked) -> None:
+    limit = settings.max_orthos_per_run
+    if limit and len(picked) > limit:
+        log.warning("400 TOO_MANY_ORTHOS project=%s n=%s limit=%s",
+                    project.id, len(picked), limit)
+        raise HTTPException(400, {
+            "code": ERROR_CODES["TOO_MANY_ORTHOS"],
+            "message": (f"{len(picked)} orthomosaics selected; one run can use "
+                        f"at most {limit}."),
+            "project_id": project.id,
+            "hint": "untick some orthomosaics, or split them across several runs",
+            "details": {"selected": len(picked), "limit": limit},
+        })
+
+def run_ortho_epsg(project, picked, body) -> dict:
+    """``{stem: epsg}`` for picked orthos with no CRS, from ``body.ortho_epsg``.
+
+    One ortho falls back to ``source_epsg``; several need an explicit EPSG,
+    else 400 ORTHO_EPSG_REQUIRED.
+    """
+    given = dict(getattr(body, "ortho_epsg", None) or {}) if body else {}
+    pinned = {}
+    if body is not None and getattr(body, "execution_id", None):
+        pinned = dict((project.params or {}).get("ortho_epsg") or {})
+    out, missing = {}, []
+    for o in picked:
+        if o.crs:
+            continue
+        epsg = given.get(o.id) or pinned.get(o.stem)
+        if not epsg and len(picked) == 1:
+            epsg = (getattr(body, "source_epsg", None) if body else None) \
+                or project.source_epsg
+        if epsg:
+            out[o.stem] = int(epsg)
+        elif len(picked) > 1:
+            missing.append(o)
+    if missing:
+        log.warning("400 ORTHO_EPSG_REQUIRED project=%s orthos=%s",
+                    project.id, [o.id for o in missing])
+        raise HTTPException(400, {
+            "code": ERROR_CODES["ORTHO_EPSG_REQUIRED"],
+            "message": ("These orthomosaics have no coordinate system: "
+                        + ", ".join(o.filename for o in missing)),
+            "project_id": project.id,
+            "hint": "enter the EPSG code for each of them in step 3",
+            "details": {"orthos": [
+                {"id": o.id, "stem": o.stem, "filename": o.filename} for o in missing
+            ]},
+        })
+    return out
 
 def _assert_ortho_usable(project, ortho) -> None:
     """The selected ortho must still have its file. A row whose file vanished
@@ -245,8 +309,8 @@ def _assert_ortho_usable(project, ortho) -> None:
                      "entry, and you can then pick the new one for the run"),
         })
 
-def _pin_run_ortho(project, ortho) -> None:
-    """Record the run's ortho on ``project.params``.
+def _pin_run_orthos(project, picked, epsg: dict | None = None) -> None:
+    """Record the run's orthos on ``project.params``.
 
     Chosen over a new ``Job`` column on purpose, see CHANGES.md. In short:
     params is the one carrier every dispatch path already shares (the local
@@ -255,13 +319,18 @@ def _pin_run_ortho(project, ortho) -> None:
     it is copied verbatim into ``project.runs`` history by
     ``archive_current_run``, and it needs no schema change.
 
-    Both keys are stored: ``ortho_id`` is the durable identity used for
-    ``in_use`` checks, ``ortho_stem`` is what the worker resolves files with and
-    what stays readable in the run history.
+    ``ortho_ids`` / ``ortho_stems`` are the lists; ``ortho_id`` / ``ortho_stem``
+    keep the first for older readers.
     """
     params = dict(project.params or {})
-    params["ortho_id"] = ortho.id
-    params["ortho_stem"] = ortho.stem
+    params["ortho_ids"] = [o.id for o in picked]
+    params["ortho_stems"] = [o.stem for o in picked]
+    params["ortho_id"] = picked[0].id
+    params["ortho_stem"] = picked[0].stem
+    if epsg:
+        params["ortho_epsg"] = dict(epsg)
+    else:
+        params.pop("ortho_epsg", None)
     project.params = params
 
 def _apply_run_config(db: Session, project, body, pre_state: str) -> None:
@@ -309,7 +378,8 @@ def _apply_run_config(db: Session, project, body, pre_state: str) -> None:
     # replaced, so a stale pin would otherwise survive). Resolved here rather
     # than passed in because archive_current_run above may have bumped
     # current_run, which the file-existence check depends on.
-    _pin_run_ortho(project, resolve_run_ortho(project, body))
+    picked = resolve_run_orthos(project, body)
+    _pin_run_orthos(project, picked, run_ortho_epsg(project, picked, body))
 
     db.add(project)
     db.commit()
@@ -331,13 +401,13 @@ def trigger_analyze(
     service: bool = Depends(service_caller),
 ):
     """Fire (or re-fire) the analysis. Optional JSON body names the run, picks
-    the orthomosaic (``ortho_id``) and sets the detector / feature extractor /
+    the orthomosaics and sets the detector / feature extractor /
     pipeline params in the same call, so the frontend's Analyze tab is a single
     button.
 
-    ``ortho_id`` may be omitted when the project holds exactly one orthomosaic ,
-    which is every project that existed before the library, so no client
-    change is required to keep working."""
+    ``ortho_ids`` (or ``ortho_id``) may be omitted when the project holds
+    exactly one orthomosaic, which is every project that existed before the
+    library, so no client change is required to keep working."""
     if body and body.project_id:
         project = resolve_project(db, user, body.project_id, service=service)
 
@@ -345,7 +415,7 @@ def trigger_analyze(
     # selection is a clean 400/404 that leaves the project exactly as it was,
     # rather than a project stuck in ANALYZING. _apply_run_config re-resolves
     # and persists the same choice once the gate is held.
-    resolve_run_ortho(project, body)
+    resolve_run_orthos(project, body)
     _validate_trigger_body(project, body)
     pre_state = project.state
     _gate(db, project, _ANALYZE_FROM, "ANALYZING", "analyze")

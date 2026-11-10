@@ -23,6 +23,8 @@ from app.core.models_registry import default_backbone
 from app.core.settings import settings
 from app.core.storage import first_polygon_geojson, project_paths
 
+import map_images
+
 # Descriptions for the columns of crown_master.csv. A column that is not listed
 # here is still written out, but with a generic description.
 _COLUMN_DOCS = {
@@ -158,47 +160,57 @@ def _footprint_from_geojson(geojson_path: str | None):
     return _ring(bbox), bbox
 
 
-def _footprint_wgs84(ortho_dir: str):
-    """Return (geometry, bbox) in WGS84 covering every orthomosaic in a folder.
+def _footprint_wgs84(ortho_dir: str, epsg_by_stem: dict | None = None):
+    """Return (geometry, bbox) in WGS84 for the orthomosaics in a folder.
 
-    Reads each GeoTIFF's bounds and reprojects them to EPSG:4326. Returns
-    ``(None, None)`` if rasterio is not installed or no orthomosaic could be
-    read, so writing the STAC item never holds up finalize.
+    One ortho gives a Polygon, several a MultiPolygon. Returns ``(None, None)``
+    if rasterio is not installed or no orthomosaic could be read, so writing
+    the STAC item never holds up finalize.
     """
+    boxes = _ortho_boxes_wgs84(ortho_dir, epsg_by_stem)
+    if not boxes:
+        return None, None
+    bbox = [min(b[0] for b in boxes.values()), min(b[1] for b in boxes.values()),
+            max(b[2] for b in boxes.values()), max(b[3] for b in boxes.values())]
+    if len(boxes) == 1:
+        return _ring(bbox), bbox
+    return {
+        "type": "MultiPolygon",
+        "coordinates": [_ring(b)["coordinates"] for _, b in sorted(boxes.items())],
+    }, bbox
+
+
+def _ortho_boxes_wgs84(ortho_dir: str, epsg_by_stem: dict | None = None) -> dict:
+    """``{stem: [w, s, e, n]}`` per GeoTIFF; ``epsg_by_stem`` covers no-CRS files."""
     try:
         import rasterio
         from rasterio.warp import transform_bounds
     except Exception:
-        return None, None
+        return {}
 
     if not os.path.isdir(ortho_dir):
-        return None, None
+        return {}
 
-    minx = miny = float("inf")
-    maxx = maxy = float("-inf")
-    found = False
-    for f in os.listdir(ortho_dir):
+    out = {}
+    for f in sorted(os.listdir(ortho_dir)):
         if not f.lower().endswith((".tif", ".tiff")):
             continue
         path = os.path.join(ortho_dir, f)
+        stem = os.path.splitext(f)[0]
         try:
             with rasterio.open(path) as src:
-                if src.crs is None:
+                crs = src.crs
+                if crs is None and (epsg_by_stem or {}).get(stem):
+                    crs = f"EPSG:{int(epsg_by_stem[stem])}"
+                if crs is None:
                     continue
                 l, b, r, t = transform_bounds(
-                    src.crs, "EPSG:4326", *src.bounds, densify_pts=21
+                    crs, "EPSG:4326", *src.bounds, densify_pts=21
                 )
         except Exception:
             continue
-        minx, miny = min(minx, l), min(miny, b)
-        maxx, maxy = max(maxx, r), max(maxy, t)
-        found = True
-
-    if not found:
-        return None, None
-
-    bbox = [round(minx, 6), round(miny, 6), round(maxx, 6), round(maxy, 6)]
-    return _ring(bbox), bbox
+        out[stem] = [round(l, 6), round(b, 6), round(r, 6), round(t, 6)]
+    return out
 
 
 def _run_datetime(candidates: list) -> str:
@@ -266,7 +278,8 @@ def build_stac_item(
     # the one orthomosaic this run processed. input/ortho is the project's whole
     # library, so reading it would pull unrelated footprints into this item. The
     # library is only used when the run's working copy has been cleaned up.
-    geometry, bbox = _footprint_wgs84(paths["ortho"])
+    ortho_epsg = dict(params.get("ortho_epsg") or {})
+    geometry, bbox = _footprint_wgs84(paths["ortho"], ortho_epsg)
     if bbox is None:
         geometry, bbox = _footprint_wgs84(paths["input_ortho"])
     if bbox is None:
@@ -383,6 +396,27 @@ def build_stac_item(
             "title": "Polygon-to-species table",
             "roles": ["data"],
         }
+    # Per-ortho KMZ and map (multi-ortho runs).
+    sites = map_images.site_stems(paths["step4_output"])
+    boxes = _ortho_boxes_wgs84(paths["ortho"], ortho_epsg) if sites else {}
+    for stem in sites:
+        sdir = map_images.site_dir(paths["step4_output"], stem)
+        if os.path.exists(os.path.join(sdir, "species_map.kmz")):
+            assets[f"kmz_{stem}"] = {
+                "href": _href(f"{results_base}/kmz?site={stem}"),
+                "type": "application/vnd.google-earth.kmz",
+                "title": f"Species map for Google Earth, {stem}",
+                "roles": ["data"],
+            }
+        if os.path.exists(os.path.join(sdir, "species_map.png")):
+            assets[f"species_map_{stem}"] = {
+                "href": _href(f"{results_base}/species-map.png?site={stem}"),
+                "type": "image/png",
+                "title": f"Species map, {stem}",
+                "roles": ["overview"],
+            }
+    if sites:
+        properties["sites"] = [{"stem": s, "bbox": boxes.get(s)} for s in sites]
     if os.path.exists(cm_png):
         assets["confusion_matrix"] = {
             "href": _href(f"{results_base}/confusion-matrix.png"),

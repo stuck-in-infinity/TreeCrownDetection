@@ -14,9 +14,11 @@ from app.core.storage import (
     detection_overlay_path,
     first_polygon_geojson,
     project_paths,
+    run_stems,
 )
 from app.db import models
 from app.db.session import get_db
+from app.services import run_orthos
 from app.services.assets import analyze_asset_fields
 
 import map_images
@@ -247,24 +249,50 @@ _ASSETS = {
     "polygons.geojson": ("polygons", None, "application/geo+json", "tree_crowns.geojson"),
 }
 
-def _asset_path(project_id: str, run: int, asset: str):
+#: Per-ortho assets; ``?site=`` picks the ortho.
+_SITE_ASSETS = {"kmz", "species-map.png", "polygons.geojson"}
+
+def _check_site(project_id: str, run: int, site: str | None) -> str | None:
+    """``site`` if it is a stem on disk for this run, else 404."""
+    if not site:
+        return None
+    if site not in run_stems(project_id, run):
+        raise HTTPException(404, {"code": "NOT_FOUND",
+            "message": f"Run {run} has no orthomosaic '{site}'",
+            "project_id": project_id,
+            "hint": "use a site from the run's 'sites' list"})
+    return site
+
+def _asset_path(project_id: str, run: int, asset: str, site: str | None = None):
     spec = _ASSETS.get(asset)
     if spec is None:
         raise HTTPException(404, {"code": "NOT_FOUND", "message": f"Unknown asset '{asset}'",
             "hint": "ask for one of: " + ", ".join(_ASSETS)})
     dir_key, fname, media, download_name = spec
     p = project_paths(project_id, run)
+    if asset == "species-map.png":
+        return _species_map_path(project_id, run, site), media, download_name
+    if asset == "kmz" and site and map_images.site_stems(p["step4_output"]):
+        return (os.path.join(map_images.site_dir(p["step4_output"], site), fname),
+                media, f"species_map_{site}.kmz")
     if fname is None:
         # The crown layer is named after the orthomosaic, so there is no fixed
         # name to join. A run that detected nothing has no file at all; return
         # the directory's placeholder name so the caller reports it missing.
-        found = first_polygon_geojson(project_id, run)
+        found = first_polygon_geojson(project_id, run, site)
+        name = f"tree_crowns_{site}.geojson" if site else download_name
         return (found or os.path.join(p[dir_key], "tree_crowns.geojson"),
-                media, download_name)
+                media, name)
     return os.path.join(p[dir_key], fname), media, download_name
 
-def _species_map_path(project_id: str, run: int) -> str:
-    return os.path.join(project_paths(project_id, run)["step4_output"], "species_map.png")
+def _species_map_path(project_id: str, run: int, site: str | None = None) -> str:
+    """Flat path for one ortho; ``sites/<stem>/`` (default first) for several."""
+    step4 = project_paths(project_id, run)["step4_output"]
+    sites = map_images.site_stems(step4)
+    if sites:
+        return os.path.join(map_images.site_dir(step4, site if site in sites else sites[0]),
+                            "species_map.png")
+    return os.path.join(step4, "species_map.png")
 
 def _can_show_species_map(project_id: str, run: int) -> bool:
     """Whether the species map exists or can be drawn from what the run kept."""
@@ -287,6 +315,7 @@ def _ensure_species_map(project_id: str, run: int) -> str | None:
         return out
     if not _can_show_species_map(project_id, run):
         return None
+    # Only old one-ortho runs get here; finalize draws multi-ortho maps.
     p = project_paths(project_id, run)
     try:
         import tree_crown_pipeline as tcp
@@ -303,13 +332,43 @@ def _ensure_species_map(project_id: str, run: int) -> str | None:
     return None
 
 def _run_images(project_id: str, run: int) -> dict:
-    """The two pictures of a run, as URLs, or None where there is none."""
-    return {
+    """The two pictures of a run, as URLs, or None where there is none.
+
+    ``sites``: per-ortho URLs, empty for a one-ortho run.
+    """
+    out = {
         "overlay_url": (f"/api/v1/project/detection/overlay.png?run={run}"
                         if detection_overlay_path(project_id, run) else None),
         "species_map_url": (f"/api/v1/project/runs/{run}/results/species-map.png"
                             if _can_show_species_map(project_id, run) else None),
+        "sites": [],
     }
+    stems = run_stems(project_id, run)
+    if len(stems) < 2:
+        return out
+    p = project_paths(project_id, run)
+    status = run_orthos.read_status(p["work"])
+    base = f"/api/v1/project/runs/{run}/results"
+    for stem in stems:
+        sdir = map_images.site_dir(p["step4_output"], stem)
+        st = status.get(stem) or {}
+        out["sites"].append({
+            "stem": stem,
+            "filename": st.get("filename"),
+            "status": st.get("status"),
+            "n_crowns": st.get("n_crowns"),
+            "error": st.get("error"),
+            "overlay_url": (f"/api/v1/project/detection/overlay.png?run={run}&site={stem}"
+                            if detection_overlay_path(project_id, run, stem) else None),
+            "species_map_url": (f"{base}/species-map.png?site={stem}"
+                                if os.path.exists(os.path.join(sdir, "species_map.png"))
+                                else None),
+            "kmz_url": (f"{base}/kmz?site={stem}"
+                        if os.path.exists(os.path.join(sdir, "species_map.kmz")) else None),
+            "polygons_url": (f"{base}/polygons.geojson?site={stem}"
+                             if first_polygon_geojson(project_id, run, stem) else None),
+        })
+    return out
 
 def _run_consent(db, project, run: int) -> dict:
     """Return the run's consent, or "not answered" if there is no run row."""
@@ -469,6 +528,14 @@ def _decorate(db, project, entries: list[dict]) -> list[dict]:
         )
         e["files_url"] = run_share_url(project.share_hash, run) if fb_on else None
         e.update(_run_images(project.id, run))
+        # All the run's orthos; ``ortho*`` above stay the first.
+        e["orthos"] = run_orthos.describe(
+            (row.params if row is not None and row.params else e.get("params")),
+            project.orthos, p["work"])
+        if not e["orthos"] and e.get("ortho_id"):
+            e["orthos"] = [{"id": e.get("ortho_id"), "stem": e.get("ortho_stem"),
+                            "filename": e.get("ortho"), "status": None,
+                            "n_crowns": None, "error": None}]
 
         # The run row is authoritative for state and attribution; the JSON
         # history is a compatibility view that predates it.
@@ -497,7 +564,7 @@ def list_runs(project=Depends(get_project), ortho_id: str | None = None,
               run: int | None = None, db: Session = Depends(get_db)):
     """Run history for this project.
 
-    ``ortho_id`` narrows it to the runs done on one orthomosaic, what the
+    ``ortho_id`` narrows it to the runs that used one orthomosaic, what the
     library rows in step 2 ask for when they are expanded. A run whose input
     was never recorded (it predates the ortho library) is deliberately returned
     by NEITHER filter rather than by all of them: putting somebody's run under
@@ -511,7 +578,9 @@ def list_runs(project=Depends(get_project), ortho_id: str | None = None,
     entries = _decorate(db, project,
                         _run_meta_from_rows(db, project) or _run_meta(project))
     if ortho_id:
-        entries = [e for e in entries if e.get("ortho_id") == ortho_id]
+        entries = [e for e in entries
+                   if ortho_id in {o.get("id") for o in e.get("orthos") or []}
+                   or e.get("ortho_id") == ortho_id]
     if run is not None:
         known = sorted({e.get("run") for e in entries if e.get("run")})
         if run not in known:
@@ -551,13 +620,15 @@ def run_results(run: int, project=Depends(get_project),
 @router.get("/projects/{project_id}/runs/{run}/results/{asset}")
 @router.get("/project/runs/{run}/results/{asset}")
 def run_asset(run: int, asset: str, preview: bool = False,
-              project=Depends(get_project)):
+              site: str | None = None, project=Depends(get_project)):
+    """One file of one run. ``site`` picks the ortho for per-ortho assets."""
     if run < 1 or run > (project.current_run or 1):
         raise HTTPException(404, {"code": "NOT_FOUND",
             "message": f"Run {run} does not exist", "project_id": project.id,
             "hint": "check the run history for this project and use a run number it lists"})
-    path, media, download_name = _asset_path(project.id, run, asset)
-    if asset == "species-map.png":
+    site = _check_site(project.id, run, site) if asset in _SITE_ASSETS else None
+    path, media, download_name = _asset_path(project.id, run, asset, site)
+    if asset == "species-map.png" and not site:
         _ensure_species_map(project.id, run)
     if not os.path.exists(path):
         raise HTTPException(404, {"code": "NOT_FOUND",

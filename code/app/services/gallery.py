@@ -42,7 +42,8 @@ _CANDIDATES = {
     "overlay": ("overlay.png", "overlay.jpg", "overlay.jpeg",
                 "detectree/*/overlay.png"),
     "species_map": ("species_map.png", "species_map.jpg", "species_map.jpeg",
-                    "step4_output/species_map.png"),
+                    "step4_output/species_map.png",
+                    "step4_output/sites/*/species_map.png"),
     "ortho_image": ("ortho.jpg", "ortho.jpeg", "ortho.png"),
     "raster": ("detectree/*/downsampled.tif", "ortho/*.tif", "ortho/*.tiff",
                "ortho.tif", "ortho.tiff"),
@@ -220,17 +221,23 @@ def _raster_facts(item_dir: str) -> dict:
                 return (rx * 111_320.0 * math.cos(math.radians(lat)), ry * 110_540.0)
             return rx, ry
 
-        base = find(item_dir, "raster")
-        if base:
+        # Sum over all orthos of the run.
+        bases = sorted(glob.glob(os.path.join(item_dir, "detectree", "*", "downsampled.tif")))
+        if not bases and find(item_dir, "raster"):
+            bases = [find(item_dir, "raster")]
+        area_m2 = 0.0
+        for base in bases:
             with rasterio.open(base) as src:
                 mx, my = metres_per_pixel(src)
                 scale = min(1.0, 512 / max(src.width, src.height))
                 shape = (max(1, int(src.height * scale)), max(1, int(src.width * scale)))
                 valid = float((src.dataset_mask(out_shape=shape) > 0).mean())
-                area_m2 = src.width * src.height * mx * my * valid
-            if area_m2 > 0:
-                # Plots are small, so keep 4 decimals.
-                out["area_km2"] = round(area_m2 / 1_000_000.0, 4)
+                area_m2 += src.width * src.height * mx * my * valid
+        if len(bases) > 1:
+            out["sites"] = len(bases)
+        if area_m2 > 0:
+            # Plots are small, so keep 4 decimals.
+            out["area_km2"] = round(area_m2 / 1_000_000.0, 4)
         native = find(item_dir, "raster_native")
         if native:
             with rasterio.open(native) as src:
