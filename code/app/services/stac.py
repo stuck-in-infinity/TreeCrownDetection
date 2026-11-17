@@ -396,18 +396,11 @@ def build_stac_item(
             "title": "Polygon-to-species table",
             "roles": ["data"],
         }
-    # Per-ortho KMZ and map (multi-ortho runs).
+    # Per-ortho map (multi-ortho runs).
     sites = map_images.site_stems(paths["step4_output"])
     boxes = _ortho_boxes_wgs84(paths["ortho"], ortho_epsg) if sites else {}
     for stem in sites:
         sdir = map_images.site_dir(paths["step4_output"], stem)
-        if os.path.exists(os.path.join(sdir, "species_map.kmz")):
-            assets[f"kmz_{stem}"] = {
-                "href": _href(f"{results_base}/kmz?site={stem}"),
-                "type": "application/vnd.google-earth.kmz",
-                "title": f"Species map for Google Earth, {stem}",
-                "roles": ["data"],
-            }
         if os.path.exists(os.path.join(sdir, "species_map.png")):
             assets[f"species_map_{stem}"] = {
                 "href": _href(f"{results_base}/species-map.png?site={stem}"),

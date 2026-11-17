@@ -3206,7 +3206,7 @@ function renderRunOrtho(){
     if(crss.size > 1 || far > FAR_KM){
       html += '<div class="warn" style="margin-top:6px">These orthomosaics are '
         + (far > FAR_KM ? 'about ' + Math.round(far) + ' km apart' : 'in different coordinate systems')
-        + '. Each still gets its own map and KMZ, but trees from very different regions may '
+        + '. Each still gets its own map (one combined KMZ), but trees from very different regions may '
         + 'group by site rather than by species. Check the "by orthomosaic" plot in the '
         + 'review, or run them separately.</div>';
     }
@@ -3766,7 +3766,7 @@ function sitePane(st, kind){
                    "Every crown found on this orthomosaic, before any species is named. Click to enlarge.");
   let html = siteMap(st.species_map_url, "Species map — " + label,
                      "This orthomosaic's crowns, coloured by the species you named. Click to enlarge.");
-  const dl = [["KMZ", st.kmz_url], ["crowns GeoJSON", st.polygons_url]].filter(x => x[1]);
+  const dl = [["crowns GeoJSON", st.polygons_url]].filter(x => x[1]);
   if(dl.length) html += '<div class="muted">' + esc(label) + ': '
     + dl.map(([t, u]) => '<a href="' + escAttr(assetUrl(apiBase() + u)) + '" target="_blank">'
                          + t + '</a>').join(" &middot; ")

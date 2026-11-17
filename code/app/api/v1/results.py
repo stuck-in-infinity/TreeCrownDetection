@@ -250,7 +250,7 @@ _ASSETS = {
 }
 
 #: Per-ortho assets; ``?site=`` picks the ortho.
-_SITE_ASSETS = {"kmz", "species-map.png", "polygons.geojson"}
+_SITE_ASSETS = {"species-map.png", "polygons.geojson"}
 
 def _check_site(project_id: str, run: int, site: str | None) -> str | None:
     """``site`` if it is a stem on disk for this run, else 404."""
@@ -272,9 +272,6 @@ def _asset_path(project_id: str, run: int, asset: str, site: str | None = None):
     p = project_paths(project_id, run)
     if asset == "species-map.png":
         return _species_map_path(project_id, run, site), media, download_name
-    if asset == "kmz" and site and map_images.site_stems(p["step4_output"]):
-        return (os.path.join(map_images.site_dir(p["step4_output"], site), fname),
-                media, f"species_map_{site}.kmz")
     if fname is None:
         # The crown layer is named after the orthomosaic, so there is no fixed
         # name to join. A run that detected nothing has no file at all; return
@@ -363,8 +360,6 @@ def _run_images(project_id: str, run: int) -> dict:
             "species_map_url": (f"{base}/species-map.png?site={stem}"
                                 if os.path.exists(os.path.join(sdir, "species_map.png"))
                                 else None),
-            "kmz_url": (f"{base}/kmz?site={stem}"
-                        if os.path.exists(os.path.join(sdir, "species_map.kmz")) else None),
             "polygons_url": (f"{base}/polygons.geojson?site={stem}"
                              if first_polygon_geojson(project_id, run, stem) else None),
         })

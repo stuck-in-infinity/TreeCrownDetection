@@ -221,8 +221,11 @@ def _raster_facts(item_dir: str) -> dict:
                 return (rx * 111_320.0 * math.cos(math.radians(lat)), ry * 110_540.0)
             return rx, ry
 
-        # Sum over all orthos of the run.
-        bases = sorted(glob.glob(os.path.join(item_dir, "detectree", "*", "downsampled.tif")))
+        # Sum over the run's orthos that produced crowns.
+        bases = sorted(
+            b for b in glob.glob(os.path.join(item_dir, "detectree", "*", "downsampled.tif"))
+            if os.path.exists(os.path.join(
+                item_dir, "polygons", os.path.basename(os.path.dirname(b)) + ".geojson")))
         if not bases and find(item_dir, "raster"):
             bases = [find(item_dir, "raster")]
         area_m2 = 0.0

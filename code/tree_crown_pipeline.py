@@ -966,8 +966,8 @@ def _write_kmz(gdf_wgs, kmz_path, species_list, palette, by_site=False):
 def step4_export_kmz(config):
     """Write the species map as a KMZ that Google Earth can open.
 
-    Several orthos: per-ortho KMZ and map under ``sites/<stem>/``, plus a
-    combined ``species_map.kmz``.
+    Several orthos: one ``species_map.kmz`` with a folder per ortho, and a
+    map per ortho under ``sites/<stem>/``.
     """
     print('\n' + '='*70)
     print('STEP 4: KMZ EXPORT')
@@ -1004,9 +1004,6 @@ def step4_export_kmz(config):
             g, map_images.find_base_raster(config.WORKDIR, stem if multi else None),
             os.path.join(out_dir, 'species_map.png'), config.COLOR_PALETTE,
             overwrite=True, all_species=species_list)
-        if multi:
-            _write_kmz(g.to_crs(epsg=4326), os.path.join(out_dir, 'species_map.kmz'),
-                       species_list, config.COLOR_PALETTE)
 
     # KML needs latitude and longitude, so reproject to WGS84.
     gdf_wgs = pd.concat([g.to_crs(epsg=4326) for g in per_site.values()],
