@@ -51,12 +51,42 @@ _FINISHED: threading.Event | None = None
 class RunFailed(Exception):
     """The run did not succeed. Details are already on the Job and the run row."""
 
-def budget_seconds(task_name: str) -> float | None:
-    """This task's wall-clock budget in seconds, or None for no limit."""
+def budget_seconds(task_name: str, project_id: str | None = None,
+                   run: int | None = None) -> float | None:
+    """This task's wall-clock budget in seconds, or None for no limit.
+
+    Scaled by the run's number of orthos.
+    """
     if not settings.run_timeout_enabled:
         return None
     minutes = getattr(settings, _BUDGETS.get(task_name, ""), 0) or 0
-    return float(minutes) * 60 if minutes > 0 else None
+    if minutes <= 0:
+        return None
+    return float(minutes) * 60 * _ortho_count(project_id, run)
+
+def _ortho_count(project_id: str | None, run: int | None = None) -> int:
+    """Number of orthos in ``run`` (default active run); 1 if unknown."""
+    if not project_id:
+        return 1
+    try:
+        from app.db import models
+        from app.db.session import SessionLocal
+        from app.services import run_orthos
+
+        db = SessionLocal()
+        try:
+            project = db.get(models.Project, project_id)
+            params = project.params if project else None
+            if project and run and run != project.current_run:
+                row = (db.query(models.Run)
+                       .filter_by(project_id=project_id, number=run).one_or_none())
+                params = row.params if row else params
+            n = len(run_orthos.pinned(params))
+        finally:
+            db.close()
+        return max(1, n)
+    except Exception:                          # noqa: BLE001
+        return 1
 
 def _arm_self_timeout(budget_s: float, stage: str, job_id: str) -> None:
     """Make the current process stop itself once ``budget_s`` has passed."""
@@ -101,7 +131,7 @@ def _disarm() -> None:
 
 def _child(task_name: str, project_id: str, job_id: str, run: int | None) -> int:
     """The child process's entry point: arm the clock, then run the task."""
-    budget = budget_seconds(task_name)
+    budget = budget_seconds(task_name, project_id, run)
     stage = _STAGES.get(task_name, "run")
     if budget:
         _arm_self_timeout(budget, stage, job_id)
@@ -183,13 +213,13 @@ def run_guarded(task_name: str, project_id: str, job_id: str,
         return
 
     if code == EXIT_TIMED_OUT:
-        minutes = (budget_seconds(task_name) or 0) / 60
+        minutes = (budget_seconds(task_name, project_id, run) or 0) / 60
         log.error("job %s stopped itself after its %.0f minute limit "
                   "(project=%s stage=%s)", job_id, minutes, project_id, stage)
         raise RunFailed(f"The {stage} exceeded its time limit.")
 
     if code == EXIT_HARD_KILLED:
-        minutes = (budget_seconds(task_name) or 0) / 60
+        minutes = (budget_seconds(task_name, project_id, run) or 0) / 60
         _record(project_id, job_id, run,
                 RunTimeout(f"The {stage} was stopped after {minutes:.0f} minutes, "
                            f"which is the time limit set for it on this server."))

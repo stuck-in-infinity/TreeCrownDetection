@@ -41,21 +41,39 @@ def species_colors(species, palette) -> dict:
     return {sp: kml_to_rgba(palette[i % len(palette)]) for i, sp in enumerate(names)}
 
 
-def find_base_raster(work_dir: str):
+def find_base_raster(work_dir: str, stem: str | None = None):
     """The raster to draw a run's map on, or None.
 
     Prefers the downsampled copy detection ran on: it is small, and it shares
     the orthomosaic's CRS and extent, so the polygons land in the same place.
     Falls back to the run's full-resolution orthomosaic, which is read
-    decimated.
+    decimated. ``stem`` picks one ortho; default the first.
     """
-    for pattern in (os.path.join(work_dir, "detectree", "*", "downsampled.tif"),
-                    os.path.join(work_dir, "ortho", "*.tif"),
-                    os.path.join(work_dir, "ortho", "*.tiff")):
+    s = stem or "*"
+    for pattern in (os.path.join(work_dir, "detectree", s, "downsampled.tif"),
+                    os.path.join(work_dir, "ortho", f"{s}.tif"),
+                    os.path.join(work_dir, "ortho", f"{s}.tiff")):
         hits = sorted(glob.glob(pattern))
         if hits:
             return hits[0]
     return None
+
+
+#: Per-ortho outputs: step4_output/sites/<stem>/.
+SITES_DIR = "sites"
+
+
+def site_dir(step4_dir: str, stem: str) -> str:
+    return os.path.join(step4_dir, SITES_DIR, stem)
+
+
+def site_stems(step4_dir: str) -> list:
+    """Stems under sites/; empty for a one-ortho run."""
+    d = os.path.join(step4_dir, SITES_DIR)
+    try:
+        return sorted(x for x in os.listdir(d) if os.path.isdir(os.path.join(d, x)))
+    except OSError:
+        return []
 
 
 def _atomic_path(dst: str) -> str:
@@ -67,12 +85,13 @@ def _atomic_path(dst: str) -> str:
 
 
 def render_species_map(gdf, raster_path: str, dst_png: str, palette,
-                       overwrite: bool = False) -> bool:
+                       overwrite: bool = False, all_species=None) -> bool:
     """Draw ``gdf``'s crowns over ``raster_path``, filled by its ``species``
     column, and save it to ``dst_png``. True if the file is now there.
 
     ``overwrite`` is for the pipeline, whose labels may have changed since the
     last export; the API leaves it off and reuses what is on disk.
+    ``all_species``: the run's species, so colours match across sites.
 
     Never raises. The map is a convenience next to the KMZ and the CSVs, so a
     raster that will not read must not fail the run that produced them.
@@ -112,7 +131,10 @@ def render_species_map(gdf, raster_path: str, dst_png: str, palette,
             gdf = gdf.to_crs(crs)
         gdf = gdf[gdf.geometry.notna() & ~gdf.geometry.is_empty]
         species = gdf["species"].fillna("unlabelled")
-        colors = species_colors(species, palette)
+        colors = species_colors(all_species if all_species is not None else species,
+                                palette)
+        present = set(species)
+        colors = {sp: c for sp, c in colors.items() if sp in present}
 
         # Through the figure object, never pyplot's current figure: that one is
         # shared by the whole process and concurrent jobs would save each
