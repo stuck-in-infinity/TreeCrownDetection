@@ -18,7 +18,7 @@ from app.core.storage import (
 )
 from app.db import models
 from app.db.session import get_db
-from app.services import run_orthos
+from app.services import run_orthos, site_plots
 from app.services.assets import analyze_asset_fields
 
 import map_images
@@ -346,6 +346,8 @@ def _run_images(project_id: str, run: int) -> dict:
     p = project_paths(project_id, run)
     status = run_orthos.read_status(p["work"])
     base = f"/api/v1/project/runs/{run}/results"
+    by_site = site_plots.species_by_site(
+        os.path.join(p["step2_output"], "crown_master.csv"), stems)
     for stem in stems:
         sdir = map_images.site_dir(p["step4_output"], stem)
         st = status.get(stem) or {}
@@ -362,6 +364,8 @@ def _run_images(project_id: str, run: int) -> dict:
                                 else None),
             "polygons_url": (f"{base}/polygons.geojson?site={stem}"
                              if first_polygon_geojson(project_id, run, stem) else None),
+            # This ortho's crowns only; the run-wide total stays at the top level.
+            "species_distribution": by_site.get(stem) or {},
         })
     return out
 
