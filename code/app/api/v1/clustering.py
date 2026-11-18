@@ -23,7 +23,7 @@ from app.core.storage import (
 )
 from app.db import models
 from app.db.session import get_db
-from app.services import run_orthos, run_registry
+from app.services import run_orthos, run_registry, site_plots
 from app.services.assets import analyze_asset_fields
 
 import crown_thumbs
@@ -177,13 +177,43 @@ def clustering_overview(request: Request, run: int | None = None,
         request, project, n, run_registry.get_run(db, project, n)
     )
 
+def _check_site(project, n: int, site: str | None) -> str | None:
+    """``site`` if it is one of this run's orthos, else 404. None passes."""
+    if site and site not in run_stems(project.id, n):
+        raise HTTPException(404, {"code": "NOT_FOUND",
+            "message": f"Run {n} has no orthomosaic '{site}'.",
+            "project_id": project.id,
+            "hint": "use a site from the run's 'sites' list",
+            "details": {"run": n, "site": site}})
+    return site or None
+
+def _site_plot_404(project, n: int, what: str, site: str):
+    return HTTPException(404, {"code": "NOT_FOUND",
+        "message": f"Run {n} has no {what} for orthomosaic '{site}'.",
+        "project_id": project.id,
+        "hint": "the run's clustering files are missing or unreadable — re-run the "
+                "analysis to rebuild them",
+        "details": {"run": n, "site": site}})
+
 @router.get("/projects/{project_id}/clustering/k-selection.png")
 @router.get("/project/clustering/k-selection.png")
-def k_selection_png(run: int | None = None, project=Depends(get_project),
-                    db=Depends(get_db)):
-    """The k-selection plot: elbow, silhouette and Davies-Bouldin for each k."""
+def k_selection_png(run: int | None = None, site: str | None = None,
+                    project=Depends(get_project), db=Depends(get_db)):
+    """The k-selection plot: elbow, silhouette and Davies-Bouldin for each k.
+
+    ``site``: the same metrics over one ortho's crowns (multi-ortho runs).
+    """
     n = _resolve_run(db, project, run)
     _require_review(db, project, n)
+    if _check_site(project, n, site):
+        row = run_registry.get_run(db, project, n)
+        rec = getattr(row if row is not None else project, "recommended_k", None)
+        f = site_plots.k_selection_site_png(
+            project_paths(project.id, n)["step1_output"], site,
+            run_stems(project.id, n), rec)
+        if not f:
+            raise _site_plot_404(project, n, "k-selection plot", site)
+        return FileResponse(f, media_type="image/png")
     f = os.path.join(_clustering_dir(project, n), "k_selection.png")
     if not os.path.exists(f):
         raise HTTPException(404, {"code": "NOT_FOUND",
@@ -212,11 +242,20 @@ def tsne_sites_png(run: int | None = None, project=Depends(get_project),
 
 @router.get("/projects/{project_id}/clustering/{k}/tsne.png")
 @router.get("/project/clustering/{k}/tsne.png")
-def tsne_png(k: int, run: int | None = None, project=Depends(get_project),
-             db=Depends(get_db)):
-    """The t-SNE scatter plot of the clusters for one value of k."""
+def tsne_png(k: int, run: int | None = None, site: str | None = None,
+             project=Depends(get_project), db=Depends(get_db)):
+    """The t-SNE scatter plot of the clusters for one value of k.
+
+    ``site``: only that ortho's crowns, the rest greyed (multi-ortho runs).
+    """
     n = _resolve_run(db, project, run)
     _require_review(db, project, n)
+    if _check_site(project, n, site):
+        f = site_plots.tsne_site_png(_clustering_dir(project, n), k, site,
+                                     run_stems(project.id, n))
+        if not f:
+            raise _site_plot_404(project, n, f"t-SNE plot for k={k}", site)
+        return FileResponse(f, media_type="image/png")
     f = os.path.join(_clustering_dir(project, n), f"tsne_k{k}.png")
     if not os.path.exists(f):
         raise HTTPException(404, {"code": "NOT_FOUND",
@@ -230,7 +269,7 @@ def tsne_png(k: int, run: int | None = None, project=Depends(get_project),
 @router.get("/projects/{project_id}/clustering/{k}/clusters")
 @router.get("/project/clustering/{k}/clusters")
 def clusters_overview(
-    k: int, request: Request, run: int | None = None,
+    k: int, request: Request, run: int | None = None, site: str | None = None,
     project=Depends(get_project), db=Depends(get_db), samples: int = 8
 ):
     """The crowns to show for each cluster, so the user can name each one.
@@ -238,11 +277,15 @@ def clusters_overview(
     Membership comes from ``k{k}_assignments.csv`` rather than from the
     per-cluster folders, so this still answers correctly when the run was made
     with ``COPY_TO_CLUSTER_FOLDERS`` off and those folders do not exist.
+    ``site``: only that ortho's crowns; cluster ids are the run's own.
     """
     n = _resolve_run(db, project, run)
     _require_review(db, project, n)
+    site = _check_site(project, n, site)
     cdir = _clustering_dir(project, n)
     rows, order = _cluster_members(cdir, k)
+    if rows is not None:
+        rows = site_plots.filter_members(rows, site, run_stems(project.id, n))
     if rows is None:
         raise HTTPException(404, {"code": "NOT_FOUND",
             "message": f"Run {n} has no clusters for k={k}.",
@@ -275,7 +318,7 @@ def clusters_overview(
                 ],
             }
         )
-    return {"project_id": project.id, "run": n, "k": k,
+    return {"project_id": project.id, "run": n, "k": k, "site": site,
             "order": order, "clusters": out}
 
 @router.get("/projects/{project_id}/crowns/{image_name}")

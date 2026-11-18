@@ -97,19 +97,48 @@ def gallery_item(item_id: str, db: Session = Depends(get_db)):
         "files_url": item.files_url,
         "how": item.how,
         "description": item.description,
+        "sites": _sites(item),
     })
     return card
 
 
+def _sites(item: gallery.Item) -> list[dict]:
+    """Per-ortho pictures and species for a multi-ortho run, [] otherwise."""
+    details = gallery.site_details(item)
+    if not details:
+        return []
+    every = set((item.summary.get("species") or {}).keys())
+    for d in details:
+        every |= set(d["species"])
+    out = []
+    for d in details:
+        stem = d["stem"]
+        out.append({
+            "stem": stem,
+            "filename": d["filename"],
+            "crowns": d["crowns"],
+            "species": (gallery.species_rows({"species": d["species"]}, every)
+                        if item.allows(gallery.TIER_ALL) else []),
+            "views": [{"kind": k, "label": gallery.IMAGE_KINDS[k][0],
+                       "url": f"{_BASE}/{item.id}/image/{k}?size=preview&site={stem}"}
+                      for k in gallery.image_kinds(item, stem)],
+        })
+    return out
+
+
 @router.get("/gallery/{item_id}/image/{kind}")
 def gallery_image(item_id: str, kind: str, size: str = "preview",
-                  db: Session = Depends(get_db)):
+                  site: str | None = None, db: Session = Depends(get_db)):
     item = _item(db, item_id)
-    if kind == "species_map" and item.allows(gallery.TIER_ALL):
+    if site:
+        # Only a stem of this run; never a path.
+        if site not in gallery.site_stems(item.dir):
+            raise _not_found()
+    elif kind == "species_map" and item.allows(gallery.TIER_ALL):
         # Older runs have no species map file yet, so draw it now.
         from app.api.v1.results import _ensure_species_map
         _ensure_species_map(item.project_id, item.run_number)
-    path = gallery.image_path(item, kind, size)
+    path = gallery.image_path(item, kind, size, site)
     if path is None:
         raise _not_found()
     return FileResponse(path, media_type="image/jpeg", headers=_IMAGE_CACHE)

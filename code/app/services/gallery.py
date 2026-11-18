@@ -95,6 +95,35 @@ class Item:
         return tier == TIER_CROWNS or self.tier == TIER_ALL
 
 
+# The same files for one ortho of a multi-ortho run; {s} is its stem.
+_SITE_CANDIDATES = {
+    "overlay": ("detectree/{s}/overlay.png",),
+    "species_map": ("step4_output/sites/{s}/species_map.png",),
+    "raster": ("detectree/{s}/downsampled.tif", "ortho/{s}.tif", "ortho/{s}.tiff"),
+}
+
+
+def site_stems(item_dir: str) -> list[str]:
+    """The run's ortho stems when it has several, else []."""
+    stems: set[str] = set()
+    for sub in ("detectree", os.path.join("step4_output", "sites")):
+        d = os.path.join(item_dir, sub)
+        try:
+            stems.update(x for x in os.listdir(d) if os.path.isdir(os.path.join(d, x)))
+        except OSError:
+            pass
+    return sorted(stems) if len(stems) > 1 else []
+
+
+def find_site(item_dir: str, key: str, stem: str) -> str | None:
+    """Like ``find``, for one ortho. None for a key with no per-ortho file."""
+    for pattern in _SITE_CANDIDATES.get(key, ()):
+        path = os.path.join(item_dir, pattern.format(s=stem))
+        if os.path.isfile(path):
+            return path
+    return None
+
+
 def find(item_dir: str, key: str) -> str | None:
     """Return the first file that exists for ``key``, or None."""
     for pattern in _CANDIDATES[key]:
@@ -125,8 +154,14 @@ def asset_path(item: Item, name: str) -> tuple[str, str] | None:
     return (path, media) if path else None
 
 
-def image_kinds(item: Item) -> list[str]:
-    """List the pictures this item can show."""
+def image_kinds(item: Item, site: str | None = None) -> list[str]:
+    """List the pictures this item can show; ``site`` for one ortho's."""
+    if site:
+        out = [k for k, key in (("ortho", "raster"), ("overlay", "overlay"))
+               if find_site(item.dir, key, site)]
+        if item.allows(TIER_ALL) and find_site(item.dir, "species_map", site):
+            out.append("species_map")
+        return out
     out = []
     if find(item.dir, "ortho_image") or find(item.dir, "raster"):
         out.append("ortho")
@@ -150,14 +185,27 @@ def _cache_dir(item: Item) -> str:
     return os.path.join(settings.storage_root, "gallery_cache", item.id)
 
 
-def image_path(item: Item, kind: str, size: str) -> str | None:
+def image_path(item: Item, kind: str, size: str, site: str | None = None) -> str | None:
     """Return a JPEG of the picture at the asked size, or None.
 
-    The JPEG is made on the first request and reused after that.
+    ``site`` picks one ortho of a multi-ortho run; the caller checks it is one
+    of ``site_stems``. The JPEG is made on the first request and reused after.
     """
     spec = IMAGE_KINDS.get(kind)
     side = IMAGE_SIZES.get(size)
     if spec is None or side is None or not item.allows(spec[1]):
+        return None
+    if site:
+        dst = os.path.join(_cache_dir(item), "sites", site, f"{kind}_{side}.jpg")
+        if kind == "ortho":
+            raster = find_site(item.dir, "raster", site)
+            ok = raster and map_images.write_raster_preview(raster, dst, side)
+            return dst if ok else None
+        src = find_site(item.dir, kind, site)
+        if src is None:
+            return None
+        if map_images.write_preview(src, dst, side):
+            return dst
         return None
     dst = os.path.join(_cache_dir(item), f"{kind}_{side}.jpg")
 
@@ -268,14 +316,19 @@ def build_summary(item_dir: str, tier: str) -> dict:
     return summary
 
 
-def species_rows(summary: dict) -> list[dict]:
-    """Species list, biggest first, with the same colours as the map."""
+def species_rows(summary: dict, all_species=None) -> list[dict]:
+    """Species list, biggest first, with the same colours as the map.
+
+    ``all_species``: every species of the run, so one ortho's list is coloured
+    the way the run's maps are (colours follow the sorted set of names).
+    """
     counts = summary.get("species") or {}
     if not counts:
         return []
     from app.services.pipeline_adapter import COLOR_PALETTE
 
-    colors = map_images.species_colors(counts.keys(), COLOR_PALETTE)
+    colors = map_images.species_colors(set(all_species or ()) | set(counts),
+                                       COLOR_PALETTE)
     rows = []
     for name, n in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0])):
         r, g, b, _a = colors[name]
@@ -285,6 +338,34 @@ def species_rows(summary: dict) -> list[dict]:
             "color": "#%02x%02x%02x" % (round(r * 255), round(g * 255), round(b * 255)),
         })
     return rows
+
+
+def site_details(item: Item) -> list[dict]:
+    """One entry per ortho of a multi-ortho run, [] otherwise.
+
+    Each: stem, file name, crown count, and (tier "all") species counts.
+    Orthos that failed or had no crowns are left out, as in the review.
+    """
+    stems = site_stems(item.dir)
+    if not stems:
+        return []
+    from app.services import run_orthos, site_plots
+
+    status = run_orthos.read_status(item.dir)
+    species = (site_plots.species_by_site(find(item.dir, "crown_master") or "", stems)
+               if item.allows(TIER_ALL) else {})
+    out = []
+    for stem in stems:
+        st = status.get(stem) or {}
+        if st.get("status") in ("failed", "no_crowns"):
+            continue
+        crowns = st.get("n_crowns")
+        if crowns is None:
+            poly = os.path.join(item.dir, "polygons", f"{stem}.geojson")
+            crowns = _count_crowns(poly if os.path.isfile(poly) else None)
+        out.append({"stem": stem, "filename": st.get("filename") or stem,
+                    "crowns": crowns, "species": species.get(stem) or {}})
+    return out
 
 
 def _tier_of(consent: int) -> str | None:

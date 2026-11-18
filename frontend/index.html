@@ -3572,7 +3572,31 @@ async function analyze(){
 }
 
 // Cluster review. REVIEW remembers which run is on screen.
-const REVIEW = { run:null, recommended:null, files_url:null, ortho:null };
+// site: the ortho stem the plots are filtered to, null for all; k: the k on screen.
+const REVIEW = { run:null, recommended:null, files_url:null, ortho:null, site:null, k:null };
+
+// "?run=N" plus "&site=stem" when one ortho is picked.
+function reviewQuery(){
+  return "?run=" + encodeURIComponent(REVIEW.run)
+    + (REVIEW.site ? "&site=" + encodeURIComponent(REVIEW.site) : "");
+}
+
+function kSelectionImg(){
+  return reviewImg(assetUrl(apiBase() + "/api/v1/project/clustering/k-selection.png" + reviewQuery()),
+                   "k-selection plot for run " + REVIEW.run
+                   + (REVIEW.site ? " on " + REVIEW.site : ""), "plot");
+}
+
+// Pick which ortho the review plots and crowns show.
+function pickReviewSite(btn){
+  REVIEW.site = btn.getAttribute("data-site") || null;
+  document.querySelectorAll(".kbtn[data-revsite]")
+    .forEach(b => b.classList.toggle("kbtn-on", b === btn));
+  const box = $("kSelBox"); if(box) box.innerHTML = kSelectionImg();
+  const note = $("kSelNote");
+  if(note) note.hidden = !REVIEW.site;
+  if(REVIEW.k) showKView(REVIEW.k);
+}
 
 // Fetch and draw one run's review.
 async function loadClusterReview(run){
@@ -3596,6 +3620,8 @@ function renderClusterReview(c){
   REVIEW.files_url = c.files_url || null;
   // The run's own ortho(s), else the selection in step 2.
   const sites = c.sites || [];
+  // A new review starts on all orthos.
+  REVIEW.site = null; REVIEW.k = null;
   const orthoName = sites.length
     ? sites.map(st => st.filename || st.stem).join(", ")
     : ((ORTHOS.find(o => o.id === (c.ortho_id || SELECTED_ORTHOS[0])) || {}).filename || "");
@@ -3627,7 +3653,21 @@ function renderClusterReview(c){
           + 'groups are splitting by site (light, season) more than by species.</p>'
           + reviewImg(assetUrl(c.tsne_sites_url), "t-SNE by orthomosaic for run " + REVIEW.run, "plot")
         : '')
-    + reviewImg(assetUrl(c.k_selection_plot_url), "k-selection plot for run " + REVIEW.run, "plot")
+    + (sites.length
+        ? '<div class="review-krow"><span class="muted">Plots and crowns for:</span>'
+          + '<button type="button" class="kbtn kbtn-on" data-revsite="" onclick="pickReviewSite(this)">'
+          + 'All orthomosaics</button>'
+          + sites.filter(st => st.status !== "failed" && st.status !== "no_crowns").map(st =>
+              '<button type="button" class="kbtn" data-revsite="1" data-site="' + escAttr(st.stem) + '"'
+              + ' onclick="pickReviewSite(this)">' + esc(st.filename || st.stem)
+              + (st.n_crowns != null ? ' <span class="muted">' + st.n_crowns + '</span>' : '')
+              + '</button>').join("")
+          + '</div>'
+          + '<p class="muted" id="kSelNote" hidden style="margin:0 0 6px">The groups are the '
+          + 'same for every orthomosaic (they were made from all crowns together); these '
+          + 'plots score them on this orthomosaic\'s crowns only.</p>'
+        : '')
+    + '<div id="kSelBox">' + kSelectionImg() + '</div>'
     + '<div class="review-krow"><span class="muted">Compare a k:</span>';
   for(const k of avail){
     const rec = (k === REVIEW.recommended);
@@ -3645,21 +3685,25 @@ function renderClusterReview(c){
 // One k: its t-SNE plot, then per cluster the crowns nearest its centre.
 async function showKView(k){
   const view = $("kView"); if(!view) return;
-  const run = REVIEW.run;
+  REVIEW.k = k;
+  const site = REVIEW.site;
 
-  document.querySelectorAll(".kbtn").forEach(b => b.classList.remove("kbtn-on"));
+  // Only the k buttons; the ortho pickers keep their own highlight.
+  document.querySelectorAll('.kbtn[id^="kbtn_"]').forEach(b => b.classList.remove("kbtn-on"));
   const btn = $("kbtn_" + k); if(btn) btn.classList.add("kbtn-on");
 
-  const q = "?run=" + encodeURIComponent(run);
-  view.innerHTML = '<div class="review-sub">k = ' + k + '</div>'
+  const q = reviewQuery();
+  view.innerHTML = '<div class="review-sub">k = ' + k + (site ? ' &middot; ' + esc(site) : '') + '</div>'
     // apiBase(): API_BASE may point at another origin.
     + reviewImg(assetUrl(apiBase() + "/api/v1/project/clustering/" + k + "/tsne.png" + q),
-                "t-SNE plot for k=" + k, "plot")
+                "t-SNE plot for k=" + k + (site ? " on " + site : ""), "plot")
     + '<div id="kClusters"><p class="muted">loading crowns…</p></div>';
 
   const box = $("kClusters");
   try{
     const d = await api(withPid("/api/v1/project/clustering/" + k + "/clusters" + q));
+    // A slower reply for a k or ortho the user already left.
+    if(REVIEW.k !== k || REVIEW.site !== site) return;
     const rows = d.clusters || [];
     if(!rows.length){ box.innerHTML = '<p class="hint">No clusters were written for this k.</p>'; return; }
 
@@ -3671,7 +3715,8 @@ async function showKView(k){
         + (cl.count === 1 ? " crown" : " crowns") + '</span></div>';
       const crowns = cl.crowns || [];
       if(!crowns.length){
-        html += '<div class="muted crow-empty">no crowns in this group</div>';
+        html += '<div class="muted crow-empty">' + (site ? 'no crowns from this orthomosaic in this group'
+                                                         : 'no crowns in this group') + '</div>';
       }else{
         html += '<div class="thumbs">';
         for(const cr of crowns){
@@ -3771,7 +3816,16 @@ function sitePane(st, kind){
     + dl.map(([t, u]) => '<a href="' + escAttr(assetUrl(apiBase() + u)) + '" target="_blank">'
                          + t + '</a>').join(" &middot; ")
     + '</div>';
+  html += distLine(st.species_distribution, "distribution on " + label);
   return html;
+}
+
+// "label: a=1, b=2", or "" when there are no counts.
+function distLine(dist, label){
+  const e = Object.entries(dist || {});
+  if(!e.length) return "";
+  return '<div>' + esc(label) + ': '
+    + e.sort((a, b) => b[1] - a[1]).map(([s, n]) => esc(s) + "=" + n).join(", ") + '</div>';
 }
 
 function showSiteTab(btn){
@@ -3917,8 +3971,7 @@ function runResultsBody(r){
   const perSite=multi?["species_map_png","polygons_geojson"]:[];
   for(const [k,v] of Object.entries(d)) if(v && !perSite.includes(k)) html+=`<li><a href="${escAttr(assetUrl(apiBase()+v))}" target="_blank">${k}</a></li>`;
   html+='</ul>';
-  const dist=r.species_distribution||{};
-  if(Object.keys(dist).length) html+='<div>distribution: '+Object.entries(dist).map(([s,n])=>`${esc(s)}=${n}`).join(", ")+'</div>';
+  html+=distLine(r.species_distribution, multi ? "distribution, all orthomosaics" : "distribution");
   return html;
 }
 
@@ -4609,6 +4662,29 @@ async function bootAuth(){
     root.innerHTML = HEAD + '<div class="gal-grid">' + d.items.map(card).join("") + '</div>' + pager;
   }
 
+  let current = null;   // the survey on screen, for the ortho picker
+
+  // The picture plus its tabs; species map first if there is one, else outlines.
+  function viewerHtml(views, title){
+    const first = views.find(v => v.kind === "species_map") || views.find(v => v.kind === "overlay") || views[0];
+    if(!first) return '<div class="gal-empty">No picture for this survey.</div>';
+    return '<a class="gal-view" id="gal-view" target="_blank" rel="noopener" href="' + h(base + first.url) + '">'
+      + '<img id="gal-img" alt="' + h(first.label + " of " + title) + '" src="' + h(base + first.url) + '"></a>'
+      + (views.length > 1 ? '<div class="gal-tabs gal-kinds">' + views.map(v =>
+          '<button class="ghost" data-url="' + h(base + v.url) + '" data-label="' + h(v.label)
+          + '" aria-pressed="' + (v === first) + '">' + h(v.label) + '</button>').join("") + '</div>' : "")
+      + '<p class="gal-note">Overview picture, shrunk for the screen. Click it to open it on its own.</p>';
+  }
+
+  function speciesHtml(rows, heading){
+    if(!(rows || []).length) return '<h3>' + h(heading) + '</h3><p class="gal-note">No crowns.</p>';
+    const top = Math.max.apply(null, rows.map(s => s.count)) || 1;
+    return '<h3>' + h(heading) + '</h3>' + rows.map(s =>
+      '<div class="gal-bar"><span title="' + h(s.name) + '">' + h(s.name) + '</span>'
+      + '<span><i class="gal-sw" style="width:' + Math.max(2, 100 * s.count / top).toFixed(1)
+      + '%;background:' + h(s.color) + '"></i></span><b>' + num(s.count) + '</b></div>').join("");
+  }
+
   async function showItem(id){
     const mine = ++seq;
     const back = '<a class="nav-link" href="#/gallery">&larr; All shared surveys</a>';
@@ -4622,6 +4698,7 @@ async function bootAuth(){
       return;
     }
     if(mine !== seq) return;
+    current = it;
 
     const stat = (label, value) => value ? '<div class="gal-stat"><span>' + label + '</span><b>' + h(value) + '</b></div>' : "";
     const stats = stat("Crowns", it.crowns == null ? "" : num(it.crowns))
@@ -4629,25 +4706,23 @@ async function bootAuth(){
       + stat("Area", area(it.area_km2))
       + stat("Resolution", it.gsd_cm ? (+it.gsd_cm.toFixed(1)) + " cm/px" : "");
 
-    const views = it.views || [];
-    // Show the species map first if there is one, else the outlines.
-    const first = views.find(v => v.kind === "species_map") || views.find(v => v.kind === "overlay") || views[0];
-    const viewer = first
-      ? '<a class="gal-view" id="gal-view" target="_blank" rel="noopener" href="' + h(base + first.url) + '">'
-        + '<img id="gal-img" alt="' + h(first.label + " of " + it.title) + '" src="' + h(base + first.url) + '"></a>'
-        + (views.length > 1 ? '<div class="gal-tabs">' + views.map(v =>
-            '<button class="ghost" data-url="' + h(base + v.url) + '" data-label="' + h(v.label)
-            + '" aria-pressed="' + (v === first) + '">' + h(v.label) + '</button>').join("") + '</div>' : "")
-        + '<p class="gal-note">Overview picture, shrunk for the screen. Click it to open it on its own.</p>'
-      : '<div class="gal-empty">No picture for this survey.</div>';
+    // Several orthos: one picker over the pictures and the species bars.
+    const sites = it.sites || [];
+    const siteBar = sites.length
+      ? '<div class="gal-tabs gal-sites">' + sites.map((s, i) =>
+          '<button class="ghost" data-site="' + i + '" aria-pressed="' + (i === 0) + '">'
+          + h(s.filename) + (s.crowns != null ? ' · ' + num(s.crowns) : '') + '</button>').join("") + '</div>'
+      : "";
+    const viewer = siteBar + '<div id="gal-viewer">'
+      + viewerHtml(sites.length ? sites[0].views : (it.views || []), it.title) + '</div>';
 
     let panel = "";
     if(it.tier === "all" && (it.species || []).length){
-      const top = Math.max.apply(null, it.species.map(s => s.count)) || 1;
-      panel += '<h3>Crowns per species</h3>' + it.species.map(s =>
-        '<div class="gal-bar"><span title="' + h(s.name) + '">' + h(s.name) + '</span>'
-        + '<span><i class="gal-sw" style="width:' + Math.max(2, 100 * s.count / top).toFixed(1)
-        + '%;background:' + h(s.color) + '"></i></span><b>' + num(s.count) + '</b></div>').join("");
+      panel += '<div id="gal-species">'
+        + (sites.length ? speciesHtml(sites[0].species, "Crowns per species — " + sites[0].filename)
+                        : speciesHtml(it.species, "Crowns per species")) + '</div>'
+        + (sites.length ? '<p class="gal-note">All orthomosaics together: '
+           + it.species.map(s => h(s.name) + " " + num(s.count)).join(", ") + '.</p>' : "");
     }
     const files = (it.downloads || []).map(f =>
       '<li><a href="' + h(base + f.url) + '" download><span>' + h(f.label) + '</span><small>'
@@ -4673,15 +4748,28 @@ async function bootAuth(){
       + ((it.how || []).length ? '<div class="gal-how"><b>How it was made</b> · ' + h(it.how.join(" · ")) + '</div>' : "");
   }
 
+  // Switch orthomosaic: its pictures and its species counts.
+  root.addEventListener("click", (e) => {
+    const b = e.target.closest && e.target.closest(".gal-sites button");
+    if(!b || !current) return;
+    const s = (current.sites || [])[+b.dataset.site];
+    if(!s) return;
+    root.querySelectorAll(".gal-sites button").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
+    const v = document.getElementById("gal-viewer");
+    if(v) v.innerHTML = viewerHtml(s.views || [], current.title);
+    const sp = document.getElementById("gal-species");
+    if(sp) sp.innerHTML = speciesHtml(s.species, "Crowns per species — " + s.filename);
+  });
+
   // Switch between pictures.
   root.addEventListener("click", (e) => {
-    const b = e.target.closest && e.target.closest(".gal-tabs button");
+    const b = e.target.closest && e.target.closest(".gal-kinds button");
     if(!b) return;
     const img = document.getElementById("gal-img"), a = document.getElementById("gal-view");
     if(!img || !a) return;
     img.src = b.dataset.url; a.href = b.dataset.url;
     img.alt = b.dataset.label;
-    root.querySelectorAll(".gal-tabs button").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
+    root.querySelectorAll(".gal-kinds button").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
   });
 
   window.galRoute = function(){
